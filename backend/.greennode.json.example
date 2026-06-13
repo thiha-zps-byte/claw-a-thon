@@ -1,0 +1,5 @@
+{
+  "_comment": "Copy to .greennode.json (gitignored) and fill from the GreenNode AI Portal (IAM). The agentbase-deploy skill reads these to deploy. NEVER commit the real file.",
+  "client_id": "",
+  "client_secret": ""
+}

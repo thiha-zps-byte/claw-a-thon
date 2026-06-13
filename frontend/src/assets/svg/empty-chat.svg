@@ -1,0 +1,9 @@
+<svg width="150" height="120" viewBox="0 0 150 120" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Chưa có tin nhắn">
+  <rect x="26" y="30" width="70" height="46" rx="13" fill="#0f7f4d"/>
+  <path d="M40 76l-2 12 14-9" fill="#0f7f4d"/>
+  <rect x="38" y="44" width="46" height="5" rx="2.5" fill="#cdf0dc"/>
+  <rect x="38" y="56" width="30" height="5" rx="2.5" fill="#9fe2bd"/>
+  <rect x="62" y="56" width="78" height="40" rx="13" fill="#eafaf1" stroke="#9fe2bd" stroke-width="2"/>
+  <rect x="74" y="70" width="42" height="5" rx="2.5" fill="#9fe2bd"/>
+  <rect x="74" y="81" width="28" height="5" rx="2.5" fill="#cdf0dc"/>
+</svg>

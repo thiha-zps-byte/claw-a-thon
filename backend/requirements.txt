@@ -1,0 +1,27 @@
+# --- Runtime (GreenNode AgentBase + Google ADK) — known-good pinned set ---
+greennode-agentbase
+google-adk==2.2.0
+litellm==1.83.7
+python-dotenv
+
+# --- Web / API ---
+python-multipart
+
+# --- LLM client for auxiliary calls (triage, vision, judge, guards) ---
+openai
+
+# --- Persistence ---
+sqlmodel
+
+# --- Document ingestion ---
+pypdf
+python-docx
+
+# --- Config / data ---
+pyyaml
+
+# --- Test / quality ---
+pytest
+pytest-asyncio
+respx
+ruff

@@ -1,0 +1,29 @@
+# Secrets — never bake into the image (provided as runtime env on AgentBase)
+.env
+*.env
+!.env.example
+.greennode.json
+.agentbase/
+.agentbase-state.json
+
+# Python
+**/__pycache__/
+**/*.py[cod]
+backend/.venv/
+backend/venv/
+backend/.pytest_cache/
+backend/.ruff_cache/
+backend/data/
+backend/uploads/
+
+# Node (frontend deps/build are produced inside the image)
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Repo / artifacts (not needed at runtime). NOTE: samples/ IS bundled — the UI
+# offers them via "Dùng tài liệu mẫu", so it must stay in the build context.
+.git/
+artifacts/
+docs/
+**/.DS_Store
