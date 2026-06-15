@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import { useToast } from 'primevue/usetoast'
 import BotForm from './BotForm.vue'
+import IntegrationForm from './IntegrationForm.vue'
 import DocumentPanel from './DocumentPanel.vue'
 import SkeletonList from './SkeletonList.vue'
 import EmptyState from './EmptyState.vue'
@@ -15,8 +16,15 @@ const store = useBotsStore()
 const toast = useToast()
 const showCreate = ref(false)
 const creating = ref(false)
-const step = ref<1 | 2>(1)
+const savingConnect = ref(false)
+const step = ref<1 | 2 | 3>(1)
 const newBotId = ref<string | null>(null)
+
+const stepHeader = computed(() => {
+  if (step.value === 1) return 'Tạo bot mới · Bước 1/3: Thông tin'
+  if (step.value === 2) return 'Tạo bot mới · Bước 2/3: Tài liệu'
+  return 'Tạo bot mới · Bước 3/3: Kết nối'
+})
 
 function openCreate() {
   step.value = 1
@@ -38,6 +46,22 @@ async function onInfoSubmit(data: Partial<Bot>) {
     toast.add({ severity: 'error', summary: 'Lỗi', detail: msg, life: 5000 })
   } finally {
     creating.value = false
+  }
+}
+
+// Step 3 → save the Messenger connection (optional), then close.
+async function onConnectSubmit(data: Partial<Bot>) {
+  if (!newBotId.value) return
+  savingConnect.value = true
+  try {
+    await store.updateBot(newBotId.value, data)
+    toast.add({ severity: 'success', summary: 'Đã lưu kết nối Messenger', life: 2500 })
+    finish()
+  } catch (e) {
+    const msg = e instanceof ApiException ? e.message : 'Lưu kết nối thất bại.'
+    toast.add({ severity: 'error', summary: 'Lỗi', detail: msg, life: 5000 })
+  } finally {
+    savingConnect.value = false
   }
 }
 
@@ -86,7 +110,7 @@ function finish() {
     <Dialog
       v-model:visible="showCreate"
       modal
-      :header="step === 1 ? 'Tạo bot mới · Bước 1/2: Thông tin' : 'Tạo bot mới · Bước 2/2: Tài liệu'"
+      :header="stepHeader"
       :style="{ width: '38rem' }"
       :breakpoints="{ '640px': '95vw' }"
     >
@@ -101,15 +125,32 @@ function finish() {
         <BotForm submit-label="Tiếp tục → Tài liệu" :submitting="creating" @submit="onInfoSubmit" />
       </template>
 
-      <template v-else>
+      <template v-else-if="step === 2">
         <p class="step2-hint">
           Nạp tài liệu để bot trả lời <strong>đúng game của bạn</strong> — chưa có thì bot chỉ trả lời chung
           chung. Có thể kéo-thả file hoặc <strong>dùng bộ mẫu sẵn</strong>.
         </p>
         <DocumentPanel v-if="newBotId" :bot-id="newBotId" />
         <div class="wizard-actions">
-          <Button label="Bỏ qua, thêm sau" text severity="secondary" @click="finish" />
-          <Button label="Hoàn tất" icon="pi pi-check" @click="finish" />
+          <Button label="Bỏ qua tài liệu" text severity="secondary" @click="step = 3" />
+          <Button label="Tiếp tục → Kết nối" icon="pi pi-arrow-right" @click="step = 3" />
+        </div>
+      </template>
+
+      <template v-else>
+        <p class="step2-hint">
+          Kết nối bot với Facebook Messenger để trả lời người chơi ngay trên Page. Có thể
+          <strong>để sau</strong> — vào tab «Kết nối» của bot bất cứ lúc nào.
+        </p>
+        <IntegrationForm
+          v-if="newBotId"
+          :bot-id="newBotId"
+          submit-label="Hoàn tất & lưu kết nối"
+          :submitting="savingConnect"
+          @submit="onConnectSubmit"
+        />
+        <div class="wizard-actions">
+          <Button label="Bỏ qua, để sau" text severity="secondary" @click="finish" />
         </div>
       </template>
     </Dialog>

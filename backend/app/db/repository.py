@@ -55,6 +55,28 @@ class BotRepository:
         stmt = select(Document).where(Document.bot_id == bot_id).order_by(Document.created_at)
         return list(self.session.exec(stmt).all())
 
+    # --- Messenger routing (no owner context: webhook traffic is public) ---------
+
+    def find_by_messenger_page_id(self, page_id: str) -> Bot | None:
+        """The enabled bot bound to a Facebook Page id (routes inbound messages)."""
+        if not page_id:
+            return None
+        stmt = select(Bot).where(
+            Bot.messenger_enabled == True,  # noqa: E712 — SQL boolean, not Python truthiness
+            Bot.messenger_page_id == page_id,
+        )
+        return self.session.exec(stmt).first()
+
+    def find_enabled_by_verify_token(self, token: str) -> Bot | None:
+        """An enabled bot whose verify token matches (for the GET webhook handshake)."""
+        if not token:
+            return None
+        stmt = select(Bot).where(
+            Bot.messenger_enabled == True,  # noqa: E712
+            Bot.messenger_verify_token == token,
+        )
+        return self.session.exec(stmt).first()
+
 
 class DocumentRepository:
     def __init__(self, session: Session) -> None:

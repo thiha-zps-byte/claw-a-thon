@@ -9,6 +9,7 @@ import { useToast } from 'primevue/usetoast'
 import ChatPanel from './ChatPanel.vue'
 import DocumentPanel from './DocumentPanel.vue'
 import BotForm from './BotForm.vue'
+import IntegrationForm from './IntegrationForm.vue'
 import { useBotsStore } from '@/stores/bots'
 import { ApiException, type Bot } from '@/api/client'
 
@@ -71,6 +72,7 @@ async function remove() {
         <Tab value="chat"><i class="pi pi-comments" aria-hidden="true" /> Chat</Tab>
         <Tab value="docs"><i class="pi pi-folder" aria-hidden="true" /> Tài liệu</Tab>
         <Tab value="config"><i class="pi pi-cog" aria-hidden="true" /> Cấu hình</Tab>
+        <Tab value="connect"><i class="pi pi-facebook" aria-hidden="true" /> Kết nối</Tab>
       </TabList>
     </Tabs>
     <!-- Content driven by a keyed transition so switching tabs fades instead of
@@ -81,7 +83,7 @@ async function remove() {
         <div v-else-if="activeTab === 'docs'" key="docs" class="panel-scroll">
           <DocumentPanel :bot-id="bot.id" />
         </div>
-        <div v-else key="config" class="panel-scroll">
+        <div v-else-if="activeTab === 'config'" key="config" class="panel-scroll">
           <BotForm
             :initial="bot"
             submit-label="Lưu thay đổi"
@@ -98,6 +100,15 @@ async function remove() {
               @click="confirmDelete = true"
             />
           </div>
+        </div>
+        <div v-else key="connect" class="panel-scroll">
+          <IntegrationForm
+            :bot-id="bot.id"
+            :initial="bot"
+            submit-label="Lưu kết nối"
+            :submitting="saving"
+            @submit="save"
+          />
         </div>
       </Transition>
     </div>

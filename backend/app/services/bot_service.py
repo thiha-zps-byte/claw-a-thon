@@ -36,6 +36,14 @@ def bot_to_dict(bot: Bot, doc_count: int | None = None) -> dict:
         "enabled_skills": bot.skills(),
         "enabled_mcp": bot.mcp(),
         "model": bot.model,
+        # Messenger channel: non-secret fields are returned as-is; tokens/secret are
+        # write-only — we expose only a boolean "is it set" so the UI can show "đã lưu"
+        # without ever shipping the secret back to the client.
+        "messenger_enabled": bot.messenger_enabled,
+        "messenger_page_id": bot.messenger_page_id,
+        "messenger_verify_token": bot.messenger_verify_token,
+        "messenger_page_token_set": bool(bot.messenger_page_token),
+        "messenger_app_secret_set": bool(bot.messenger_app_secret),
         "created_at": bot.created_at.isoformat() if bot.created_at else None,
     }
     if doc_count is not None:
@@ -73,6 +81,24 @@ def _clean_skill_list(raw) -> str:
     return json.dumps(cleaned or DEFAULT_SKILLS)
 
 
+def _apply_messenger_fields(bot: Bot, data: dict) -> None:
+    """Copy Messenger channel fields from ``data`` onto ``bot``.
+
+    The secrets (``page_token`` / ``app_secret``) are write-only: an empty/absent
+    value leaves the stored secret untouched, so the UI can submit the form without
+    knowing the current secret. Non-secret fields are set whenever present.
+    """
+    if "messenger_enabled" in data and data["messenger_enabled"] is not None:
+        bot.messenger_enabled = bool(data["messenger_enabled"])
+    for field in ("messenger_page_id", "messenger_verify_token"):
+        if field in data and data[field] is not None:
+            setattr(bot, field, str(data[field]).strip())
+    for field in ("messenger_page_token", "messenger_app_secret"):
+        value = (data.get(field) or "").strip()
+        if value:
+            setattr(bot, field, value)
+
+
 # --- CRUD ---------------------------------------------------------------------
 
 
@@ -94,6 +120,9 @@ def create_bot(owner_uid: str, data: dict) -> dict:
         enabled_mcp=json.dumps(data.get("enabled_mcp") or []),
         model=(data.get("model") or "").strip(),
     )
+    # Usually configured later (wizard step 3 / Kết nối tab via PATCH), but accept it
+    # here too so a single create call can fully provision a bot.
+    _apply_messenger_fields(bot, data)
     with get_session() as session:
         repo = BotRepository(session)
         repo.create(bot)
@@ -142,6 +171,7 @@ def update_bot(owner_uid: str, bot_id: str, data: dict) -> dict:
             bot.enabled_skills = _clean_skill_list(data["enabled_skills"])
         if "enabled_mcp" in data:
             bot.enabled_mcp = json.dumps(data["enabled_mcp"] or [])
+        _apply_messenger_fields(bot, data)
         repo.update(bot)
         agent_service.invalidate(bot_id)
         return bot_to_dict(bot, doc_count=len(repo.documents_of(bot_id)))

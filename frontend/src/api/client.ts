@@ -30,9 +30,32 @@ export interface Bot {
   enabled_skills: string[]
   enabled_mcp: string[]
   model: string
+  // --- Facebook Messenger channel ---
+  // Read back from the server:
+  messenger_enabled?: boolean
+  messenger_page_id?: string
+  messenger_verify_token?: string
+  messenger_page_token_set?: boolean
+  messenger_app_secret_set?: boolean
+  // Write-only (sent on save, never returned): leave blank to keep the stored secret.
+  messenger_page_token?: string
+  messenger_app_secret?: string
   created_at: string | null
   document_count?: number
   documents?: DocumentItem[]
+}
+
+export interface MessengerValidateResult {
+  ok: boolean
+  page_name?: string
+  page_id?: string
+  error?: string
+}
+
+export interface MessengerSimulateResult {
+  reply: string
+  category: string
+  delay: number
 }
 
 export interface DocumentItem {
@@ -155,6 +178,17 @@ export const api = {
   sampleRawUrl: (id: string) => `/api/samples/${id}/raw?uid=${encodeURIComponent(getUid())}`,
   chat: (botId: string, message: string) =>
     request<ChatResult>('POST', '/api/chat', { bot_id: botId, message }),
+  // Dry-run the Messenger inbound pipeline (no Facebook call) — verify the bot replies.
+  simulateMessenger: (botId: string, message: string) =>
+    request<MessengerSimulateResult>('POST', `/api/bots/${botId}/messenger/simulate`, { message }),
+  // Check a Page id + token against the Graph API so the operator can fix wrong keys.
+  validateMessenger: (
+    botId: string,
+    creds: { page_id?: string; page_token?: string },
+  ) => request<MessengerValidateResult>('POST', `/api/bots/${botId}/messenger/validate`, creds),
+  // Auto-subscribe the Page to message events (skips the manual Meta dashboard step).
+  subscribeMessenger: (botId: string, creds: { page_token?: string } = {}) =>
+    request<MessengerValidateResult>('POST', `/api/bots/${botId}/messenger/subscribe`, creds),
 
   async uploadDocuments(botId: string, files: File[]): Promise<DocumentItem[]> {
     const form = new FormData()

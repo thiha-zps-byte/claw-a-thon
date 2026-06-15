@@ -39,6 +39,13 @@ class Bot(SQLModel, table=True):
     enabled_skills: str = "[]"
     enabled_mcp: str = "[]"
     model: str = ""                   # empty → use default LLM_MODEL
+    # Facebook Messenger channel (per-bot). One Page ⇄ one bot; routing is by page id.
+    # Tokens/secret are write-only to the client (see bot_service.bot_to_dict).
+    messenger_enabled: bool = False
+    messenger_page_id: str = ""
+    messenger_verify_token: str = ""  # operator-chosen; matched on the GET handshake
+    messenger_page_token: str = ""    # secret — Graph API send
+    messenger_app_secret: str = ""    # secret — verifies X-Hub-Signature-256
     created_at: datetime = Field(default_factory=_now)
 
     def skills(self) -> list[str]:

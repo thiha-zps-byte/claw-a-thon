@@ -66,7 +66,31 @@ def init_db() -> None:
     # Import models so they register on SQLModel.metadata.
     from app.db import models  # noqa: F401
 
-    SQLModel.metadata.create_all(get_engine())
+    engine = get_engine()
+    SQLModel.metadata.create_all(engine)
+    _migrate_bot_columns(engine)
+
+
+# Columns added to ``bots`` after its first release. ``create_all`` only creates
+# missing *tables*, never missing *columns*, so we add them by hand for an existing
+# DB. SQLite-only and idempotent (skips any column already present).
+_BOT_ADDED_COLUMNS: dict[str, str] = {
+    "messenger_enabled": "BOOLEAN NOT NULL DEFAULT 0",
+    "messenger_page_id": "VARCHAR NOT NULL DEFAULT ''",
+    "messenger_verify_token": "VARCHAR NOT NULL DEFAULT ''",
+    "messenger_page_token": "VARCHAR NOT NULL DEFAULT ''",
+    "messenger_app_secret": "VARCHAR NOT NULL DEFAULT ''",
+}
+
+
+def _migrate_bot_columns(engine: Engine) -> None:
+    if not engine.url.get_backend_name().startswith("sqlite"):
+        return
+    with engine.begin() as conn:
+        existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(bots)")}
+        for name, ddl in _BOT_ADDED_COLUMNS.items():
+            if name not in existing:
+                conn.exec_driver_sql(f"ALTER TABLE bots ADD COLUMN {name} {ddl}")
 
 
 @contextmanager
