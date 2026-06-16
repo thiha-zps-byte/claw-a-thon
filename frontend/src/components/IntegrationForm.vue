@@ -306,10 +306,10 @@ function submit() {
 
     <!-- Escalation: forward hard cases to a human support group (one-way) -->
     <div class="tg-section">
-      <span class="field-label section-title">Chuyển cho người thật</span>
+      <span class="field-label section-title">Chuyển nhân viên hỗ trợ</span>
       <span class="field-hint">
-        Khi bot bí hoặc gặp tình huống bạn khai bên dưới, hệ thống gửi tóm tắt <strong>1 chiều</strong>
-        về nhóm để người thật nhảy lên fanpage hỗ trợ.
+        Khi bot chưa trả lời được hoặc gặp tình huống bạn khai bên dưới, hệ thống tự tạo
+        <strong>phiếu hỗ trợ</strong> gửi về nhóm (một chiều) để nhân viên kịp thời hỗ trợ trên fanpage.
       </span>
 
       <label class="field">
@@ -328,21 +328,21 @@ function submit() {
 
       <label class="switch-row">
         <ToggleSwitch v-model="form.telegram_forward_enabled" :disabled="readonly" />
-        <span class="field-label">Bật chuyển cho người thật</span>
+        <span class="field-label">Bật chuyển nhân viên hỗ trợ</span>
       </label>
 
       <template v-if="form.telegram_forward_enabled">
         <label class="field">
-          <span class="field-label">Khi nào cần người thật xử lý?</span>
+          <span class="field-label">Khi nào chuyển cho nhân viên hỗ trợ?</span>
           <Textarea
             v-model="form.escalation_topics"
             :disabled="readonly"
             rows="2"
             auto-resize
-            placeholder="Liệt kê tình huống nên chuyển nhân viên thật, cách nhau bằng dấu phẩy. VD: nạp tiền, hack cheat, lỗi game"
-            aria-label="Tình huống cần người thật"
+            placeholder="Liệt kê các tình huống cần nhân viên xử lý, cách nhau bằng dấu phẩy. VD: nạp tiền, hack cheat, lỗi game"
+            aria-label="Tình huống cần nhân viên hỗ trợ"
           />
-          <span class="field-hint">Bot tự nhận diện câu hỏi thuộc các tình huống này để chuyển nhóm.</span>
+          <span class="field-hint">Bot tự nhận diện câu hỏi thuộc các tình huống này để bàn giao nhân viên.</span>
         </label>
 
         <label class="field">

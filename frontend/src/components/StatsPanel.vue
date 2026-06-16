@@ -141,9 +141,9 @@ async function openPlayer(p: PlayerRow) {
                   :hint="`${overview.totals.new_players} mới · ${overview.totals.returning_players} quay lại`" />
         <StatCard label="Tin nhắn" :value="overview.totals.messages" :hint="channelLine" />
         <StatCard label="Bot tự trả lời" :value="overview.totals.auto_answer_rate + '%'"
-                  :hint="`${overview.totals.degraded_count} câu bot bí`" />
-        <StatCard label="Đã chuyển nhóm" :value="overview.totals.escalated_count"
-                  hint="ca chuyển người thật" />
+                  :hint="`${overview.totals.degraded_count} câu chưa trả lời được`" />
+        <StatCard label="Chuyển nhân viên" :value="overview.totals.escalated_count"
+                  hint="ca cần nhân viên hỗ trợ" />
         <StatCard label="Tốc độ phản hồi"
                   :value="fmtMs(overview.totals.latency_p50_ms)"
                   :hint="`p95 ${fmtMs(overview.totals.latency_p95_ms)}`" />
@@ -163,7 +163,7 @@ async function openPlayer(p: PlayerRow) {
 
       <!-- Knowledge gaps -->
       <section v-if="overview.unanswered.length" class="block">
-        <h4>Câu bot chưa trả lời được ({{ overview.unanswered.length }})</h4>
+        <h4>Câu hỏi bot chưa trả lời được ({{ overview.unanswered.length }})</h4>
         <p class="muted block-hint">Bổ sung những câu này vào tài liệu để bot trả lời được.</p>
         <ul class="plain-list">
           <li v-for="(u, i) in overview.unanswered" :key="i">

@@ -74,8 +74,6 @@ class Settings:
     # Limits
     max_upload_mb: int
     context_token_budget: int
-    # Optional gate for the "admin" UI mode (edits the shared bot). Empty = no gate.
-    admin_token: str
     # Demo Telegram escalation creds for the shared bot (stored in .env, not git).
     demo_telegram_token: str
     demo_telegram_group_id: str
@@ -123,7 +121,6 @@ def get_settings(require_secrets: bool = True) -> Settings:
         ),
         max_upload_mb=int(_optional("MAX_UPLOAD_MB", "32") or "32"),
         context_token_budget=int(_optional("CONTEXT_TOKEN_BUDGET", "12000") or "12000"),
-        admin_token=_optional("ADMIN_TOKEN"),
         demo_telegram_token=_optional("DEMO_TELEGRAM_TOKEN"),
         demo_telegram_group_id=_optional("DEMO_TELEGRAM_GROUP_ID"),
     )

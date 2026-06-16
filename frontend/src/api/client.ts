@@ -235,10 +235,6 @@ export const api = {
   subscribeMessenger: (botId: string, creds: { page_token?: string } = {}) =>
     request<MessengerValidateResult>('POST', `/api/bots/${botId}/messenger/subscribe`, creds),
 
-  // Verify the optional admin token to unlock "admin" mode (edits the shared bot).
-  adminLogin: (token: string) =>
-    request<{ ok: boolean; reason?: string }>('POST', '/api/admin/login', { token }),
-
   // Send a test message to the bot's Telegram support group.
   testTelegram: (botId: string, body: { telegram_bot_token?: string; telegram_group_id?: string }) =>
     request<{ ok: boolean; error?: string }>('POST', `/api/bots/${botId}/telegram/test`, body),

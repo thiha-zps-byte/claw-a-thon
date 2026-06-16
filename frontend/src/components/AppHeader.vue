@@ -4,7 +4,6 @@ import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Dialog from 'primevue/dialog'
 import logo from '@/assets/svg/logo.svg'
-import { api } from '@/api/client'
 import { useUserStore } from '@/stores/user'
 
 const emit = defineEmits<{ (e: 'uid-changed'): void }>()
@@ -22,37 +21,12 @@ function saveUid() {
   emit('uid-changed')
 }
 
-// --- admin mode (edits the shared demo bot) ---
+// --- admin mode: switch identity to "admin" (no password — UID-based access) ---
 const showAdmin = ref(false)
-const adminToken = ref('')
-const adminError = ref('')
-const adminLoading = ref(false)
-
-function openAdmin() {
-  adminToken.value = ''
-  adminError.value = ''
-  showAdmin.value = true
-}
-async function loginAdmin() {
-  adminLoading.value = true
-  adminError.value = ''
-  try {
-    const r = await api.adminLogin(adminToken.value)
-    if (r.ok) {
-      user.changeUid('admin')
-      showAdmin.value = false
-      emit('uid-changed')
-    } else {
-      adminError.value =
-        r.reason === 'unset'
-          ? 'Chưa cấu hình mật khẩu admin (ADMIN_TOKEN) trên máy chủ.'
-          : 'Mật khẩu admin không đúng.'
-    }
-  } catch {
-    adminError.value = 'Không kết nối được máy chủ. Vui lòng thử lại.'
-  } finally {
-    adminLoading.value = false
-  }
+function enterAdmin() {
+  user.changeUid('admin')
+  showAdmin.value = false
+  emit('uid-changed')
 }
 </script>
 
@@ -73,8 +47,8 @@ async function loginAdmin() {
           <span class="uid-value">{{ user.uid }}</span>
           <i class="pi pi-pencil" aria-hidden="true" />
         </button>
-        <button class="admin-link" type="button" @click="openAdmin">
-          <i class="pi pi-shield" aria-hidden="true" /> Chế độ admin
+        <button class="admin-link" type="button" @click="showAdmin = true">
+          <i class="pi pi-shield" aria-hidden="true" /> Chế độ quản trị
         </button>
       </div>
     </div>
@@ -92,22 +66,14 @@ async function loginAdmin() {
       </template>
     </Dialog>
 
-    <Dialog v-model:visible="showAdmin" modal header="Chế độ admin" :style="{ width: '24rem' }">
+    <Dialog v-model:visible="showAdmin" modal header="Chế độ quản trị" :style="{ width: '24rem' }">
       <p class="muted dialog-hint">
-        Nhập mật khẩu admin để chỉnh sửa bot dùng chung. (Người thường vẫn xem & chat thử được bình thường.)
+        Chuyển sang định danh <strong>quản trị viên</strong> để chỉnh sửa trợ lý dùng chung.
+        Người dùng thường vẫn xem đầy đủ và dùng thử bình thường.
       </p>
-      <InputText
-        v-model="adminToken"
-        type="password"
-        class="w-full"
-        aria-label="Mật khẩu admin"
-        autofocus
-        @keyup.enter="loginAdmin"
-      />
-      <p v-if="adminError" class="admin-error">{{ adminError }}</p>
       <template #footer>
         <Button label="Hủy" severity="secondary" text @click="showAdmin = false" />
-        <Button label="Vào admin" icon="pi pi-shield" :loading="adminLoading" @click="loginAdmin" />
+        <Button label="Vào chế độ quản trị" icon="pi pi-shield" @click="enterAdmin" />
       </template>
     </Dialog>
   </header>
@@ -164,11 +130,6 @@ async function loginAdmin() {
 }
 .admin-link:hover {
   color: var(--green);
-}
-.admin-error {
-  color: #c0392b;
-  font-size: 0.82rem;
-  margin: 8px 0 0;
 }
 .uid-chip {
   display: inline-flex;

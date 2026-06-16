@@ -86,7 +86,7 @@ async function remove() {
 
     <p v-if="bot.is_shared && readonly" class="shared-banner">
       <i class="pi pi-info-circle" aria-hidden="true" />
-      Đây là bot dùng chung để xem thử — chỉ admin chỉnh sửa được. Bạn vẫn xem đầy đủ và chat thử được.
+      Đây là trợ lý dùng chung để tham khảo — chỉ quản trị viên chỉnh sửa. Bạn có thể xem toàn bộ và dùng thử.
     </p>
 
     <Tabs v-model:value="activeTab" class="ws-tabs">
