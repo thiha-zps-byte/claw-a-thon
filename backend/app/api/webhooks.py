@@ -66,6 +66,30 @@ async def handle_incoming(
     return result
 
 
+async def handle_comment(
+    bot_id: str,
+    page_token: str,
+    page_id: str,
+    comment_id: str,
+    commenter_id: str,
+    text: str,
+    *,
+    dry_run: bool = False,
+) -> dict:
+    """Answer a Page post comment by sending the commenter a private reply (DM).
+
+    Same chat pipeline as a Messenger DM; routed/scoped per (page, commenter).
+    """
+    uid = f"fb-{commenter_id}"
+    session_id = f"fb-{page_id or 'sim'}-{commenter_id}"
+    result = await bot_service.chat(
+        uid, bot_id, text, session_id, channel="messenger", log_event=not dry_run
+    )
+    if not dry_run:
+        await messenger.private_reply(page_token, comment_id, result["reply"])
+    return result
+
+
 # --- public webhook -----------------------------------------------------------
 
 
@@ -103,6 +127,7 @@ async def _receive_events(request: Request) -> Response:
         return PlainTextResponse("ok")
 
     jobs: list[tuple[str, str, str, str, str]] = []
+    comment_jobs: list[tuple[str, str, str, str, str, str]] = []
     with get_session() as session:
         repo = BotRepository(session)
         for entry in data.get("entry", []):
@@ -116,6 +141,7 @@ async def _receive_events(request: Request) -> Response:
             ):
                 log.warning("messenger signature mismatch for page %s", page_id)
                 continue
+            # Messenger DMs.
             for event in entry.get("messaging", []):
                 message = event.get("message") or {}
                 text = message.get("text")
@@ -126,17 +152,41 @@ async def _receive_events(request: Request) -> Response:
                 if not psid:
                     continue
                 jobs.append((bot.id, bot.messenger_page_token, page_id, str(psid), text))
+            # Post comments (feed) → private-reply the commenter.
+            for change in entry.get("changes", []):
+                if change.get("field") != "feed":
+                    continue
+                v = change.get("value") or {}
+                if v.get("item") != "comment" or v.get("verb") != "add":
+                    continue
+                from_id = str((v.get("from") or {}).get("id") or "")
+                text = v.get("message")
+                comment_id = v.get("comment_id")
+                # Skip the Page's own comments (its replies) to avoid an echo loop.
+                if not text or not comment_id or not from_id or from_id == page_id:
+                    continue
+                comment_jobs.append(
+                    (bot.id, bot.messenger_page_token, page_id, str(comment_id), from_id, text)
+                )
 
     # Deliver after the response is sent → Facebook gets a prompt 200, no retries.
-    return JSONResponse({"status": "ok"}, background=BackgroundTask(_run_jobs, jobs))
+    return JSONResponse(
+        {"status": "ok"},
+        background=BackgroundTask(_run_all_jobs, jobs, comment_jobs),
+    )
 
 
-async def _run_jobs(jobs: list[tuple[str, str, str, str, str]]) -> None:
+async def _run_all_jobs(jobs, comment_jobs) -> None:
     for bot_id, page_token, page_id, psid, text in jobs:
         try:
             await handle_incoming(bot_id, page_token, page_id, psid, text)
         except Exception as exc:  # noqa: BLE001 — one bad message must not drop the rest
             log.warning("messenger handle failed (bot=%s): %s", bot_id, type(exc).__name__)
+    for bot_id, page_token, page_id, comment_id, from_id, text in comment_jobs:
+        try:
+            await handle_comment(bot_id, page_token, page_id, comment_id, from_id, text)
+        except Exception as exc:  # noqa: BLE001 — one bad comment must not drop the rest
+            log.warning("comment handle failed (bot=%s): %s", bot_id, type(exc).__name__)
 
 
 @handle_errors

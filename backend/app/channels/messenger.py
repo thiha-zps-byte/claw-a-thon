@@ -22,7 +22,8 @@ _GRAPH_BASE = f"https://graph.facebook.com/{GRAPH_VERSION}"
 _TIMEOUT = 15.0
 
 # Events we ask the Page to deliver to the app's webhook.
-_SUBSCRIBED_FIELDS = "messages,messaging_postbacks"
+# ``feed`` delivers post comments so the bot can private-reply to commenters.
+_SUBSCRIBED_FIELDS = "messages,messaging_postbacks,feed"
 
 
 async def send_text(page_token: str, recipient_psid: str, text: str) -> bool:
@@ -39,6 +40,29 @@ async def send_typing(page_token: str, recipient_psid: str) -> bool:
     """Show the 'typing…' indicator to a PSID. Returns True on success."""
     payload = {"recipient": {"id": recipient_psid}, "sender_action": "typing_on"}
     return await _post_message(page_token, payload, what="typing")
+
+
+async def private_reply(page_token: str, comment_id: str, text: str) -> bool:
+    """DM the author of a comment (Graph ``/{comment_id}/private_replies``).
+
+    Sends a Messenger private reply to whoever wrote ``comment_id``. Never raises.
+    """
+    if not page_token or not comment_id:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.post(
+                f"{_GRAPH_BASE}/{comment_id}/private_replies",
+                params={"access_token": page_token},
+                json={"message": text},
+            )
+        if resp.status_code >= 400:
+            log.warning("private_reply failed: HTTP %s %s", resp.status_code, resp.text[:300])
+            return False
+        return True
+    except Exception as exc:  # noqa: BLE001 — delivery is best-effort
+        log.warning("private_reply error: %s", type(exc).__name__)
+        return False
 
 
 async def _post_message(page_token: str, payload: dict, *, what: str) -> bool:
