@@ -10,6 +10,7 @@ import ChatPanel from './ChatPanel.vue'
 import DocumentPanel from './DocumentPanel.vue'
 import BotForm from './BotForm.vue'
 import IntegrationForm from './IntegrationForm.vue'
+import StatsPanel from './StatsPanel.vue'
 import { useBotsStore } from '@/stores/bots'
 import { ApiException, type Bot } from '@/api/client'
 
@@ -73,6 +74,7 @@ async function remove() {
         <Tab value="docs"><i class="pi pi-folder" aria-hidden="true" /> Tài liệu</Tab>
         <Tab value="config"><i class="pi pi-cog" aria-hidden="true" /> Cấu hình</Tab>
         <Tab value="connect"><i class="pi pi-facebook" aria-hidden="true" /> Kết nối</Tab>
+        <Tab value="stats"><i class="pi pi-chart-bar" aria-hidden="true" /> Thống kê</Tab>
       </TabList>
     </Tabs>
     <!-- Content driven by a keyed transition so switching tabs fades instead of
@@ -101,7 +103,7 @@ async function remove() {
             />
           </div>
         </div>
-        <div v-else key="connect" class="panel-scroll">
+        <div v-else-if="activeTab === 'connect'" key="connect" class="panel-scroll">
           <IntegrationForm
             :bot-id="bot.id"
             :initial="bot"
@@ -109,6 +111,9 @@ async function remove() {
             :submitting="saving"
             @submit="save"
           />
+        </div>
+        <div v-else key="stats" class="panel-scroll">
+          <StatsPanel :bot-id="bot.id" />
         </div>
       </Transition>
     </div>

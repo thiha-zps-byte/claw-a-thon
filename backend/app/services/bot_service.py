@@ -7,10 +7,12 @@ and the agent service come together. Returns plain dicts ready for JSON.
 from __future__ import annotations
 
 import json
+import time
 
 from app.agents.behavior import triage as _triage  # noqa: F401  (ensures import health)
 from app.config import get_settings
 from app.core.errors import not_found, validation_error
+from app.core.logging import get_logger
 from app.db.database import get_session
 from app.db.models import Bot, Document
 from app.ingest import extract, is_supported
@@ -18,6 +20,8 @@ from app.services.agent_service import agent_service
 from app.skills import DEFAULT_SKILLS, available_skill_ids
 
 MAX_MESSAGE_CHARS = 4000
+
+_log = get_logger("bot_service")
 
 
 # --- serialization ------------------------------------------------------------
@@ -318,13 +322,24 @@ def delete_document(owner_uid: str, bot_id: str, doc_id: str) -> dict:
 
 
 async def chat(
-    uid: str, bot_id: str, message: str, session_id: str, *, require_owner: bool = False
+    uid: str,
+    bot_id: str,
+    message: str,
+    session_id: str,
+    *,
+    require_owner: bool = False,
+    channel: str = "web",
+    log_event: bool = True,
 ) -> dict:
     """Run one chat turn.
 
     ``require_owner`` scopes the bot to ``uid`` (used by the web studio's
     ``/api/chat`` so one user can't drive another user's bot). The public runtime
     entrypoint (``/invocations``) leaves it off — there the player is not the owner.
+
+    Every real turn is recorded as a ``MessageEvent`` for the usage dashboard.
+    ``log_event=False`` skips that (used by the Messenger operator self-test so a
+    dry-run never pollutes the stats). ``channel`` tags where the turn came from.
     """
     from app.db.repository import BotRepository
 
@@ -343,10 +358,40 @@ async def chat(
         documents = repo.documents_of(bot_id)
         session.expunge_all()
 
+    started = time.perf_counter()
     result = await agent_service.run_turn(bot, documents, message, uid, session_id)
+    latency_ms = int((time.perf_counter() - started) * 1000)
+
+    if log_event:
+        _record_event(bot_id, channel, uid, session_id, message, result, latency_ms)
+
     return {
         "reply": result.reply,
         "category": result.category,
         "delay": result.delay,
         "bot_id": bot_id,
     }
+
+
+def _record_event(bot_id, channel, sender_id, session_id, question, result, latency_ms) -> None:
+    """Persist one usage event. Never let analytics break a chat reply."""
+    from app.db.models import MessageEvent
+    from app.db.repository import MessageEventRepository
+
+    try:
+        with get_session() as session:
+            MessageEventRepository(session).add(
+                MessageEvent(
+                    bot_id=bot_id,
+                    channel=channel,
+                    sender_id=sender_id,
+                    session_id=session_id,
+                    question=question,
+                    reply=result.reply,
+                    category=result.category,
+                    latency_ms=latency_ms,
+                    degraded=result.degraded,
+                )
+            )
+    except Exception:  # noqa: BLE001
+        _log.warning("failed to record message event for bot %s", bot_id, exc_info=True)

@@ -31,6 +31,7 @@ class TurnResult:
     category: str
     delay: float
     truncated_docs: bool = False
+    degraded: bool = False   # True when the bot fell back instead of answering
 
 
 class AgentService:
@@ -122,17 +123,18 @@ class AgentService:
             return TurnResult(reply, category, guards.human_delay(reply))
 
         # Substantive path — main ADK agent grounded in documents.
-        reply = await self._run_agent(bot, documents, message, uid, session_id)
+        reply, degraded = await self._run_agent(bot, documents, message, uid, session_id)
         reply = guards.polish(reply, bot)
         # enforce_address may call the fast model — keep it off the event loop too.
         # Skip when the player opted out of the default xưng hô.
         if addr_key not in self._address_freed:
             reply = await asyncio.to_thread(guards.enforce_address, reply, bot)
-        return TurnResult(reply, category, guards.human_delay(reply))
+        return TurnResult(reply, category, guards.human_delay(reply), degraded=degraded)
 
     async def _run_agent(
         self, bot: Bot, documents: list[Document], message: str, uid: str, session_id: str
-    ) -> str:
+    ) -> tuple[str, bool]:
+        """Return ``(reply, degraded)`` — degraded means we served the fallback line."""
         from google.genai import types
 
         from app.core.errors import AppError
@@ -153,8 +155,11 @@ class AgentService:
             raise
         except Exception as exc:  # noqa: BLE001
             log.warning(kv(event="agent_error", bot=bot.id, err=type(exc).__name__))
-            return _degraded_reply(bot)
-        return reply.strip() or _degraded_reply(bot)
+            return _degraded_reply(bot), True
+        reply = reply.strip()
+        if not reply:
+            return _degraded_reply(bot), True
+        return reply, False
 
     async def _ensure_session(self, uid: str, sid: str) -> None:
         svc = self._ensure_session_service()

@@ -58,6 +58,41 @@ export interface MessengerSimulateResult {
   delay: number
 }
 
+// --- usage dashboard ---
+export interface StatsOverview {
+  range: string
+  totals: {
+    players: number
+    new_players: number
+    returning_players: number
+    messages: number
+    degraded_count: number
+    auto_answer_rate: number
+    latency_p50_ms: number
+    latency_p95_ms: number
+  }
+  messages_per_day: { date: string; count: number }[]
+  by_channel: { channel: string; count: number }[]
+  top_categories: { category: string; count: number }[]
+  unanswered: { sender_id: string; channel: string; question: string; created_at: string }[]
+}
+
+export interface PlayerRow {
+  channel: string
+  sender_id: string
+  message_count: number
+  first_at: string
+  last_at: string
+}
+
+export interface ConversationTurn {
+  question: string
+  reply: string
+  category: string
+  degraded: boolean
+  created_at: string
+}
+
 export interface DocumentItem {
   id: string
   bot_id: string
@@ -189,6 +224,20 @@ export const api = {
   // Auto-subscribe the Page to message events (skips the manual Meta dashboard step).
   subscribeMessenger: (botId: string, creds: { page_token?: string } = {}) =>
     request<MessengerValidateResult>('POST', `/api/bots/${botId}/messenger/subscribe`, creds),
+
+  // --- usage dashboard ---
+  getStatsOverview: (botId: string, range: string) =>
+    request<StatsOverview>('GET', `/api/bots/${botId}/stats/overview?range=${range}`),
+  getPlayers: (botId: string, range: string) =>
+    request<{ players: PlayerRow[] }>(
+      'GET',
+      `/api/bots/${botId}/stats/players?range=${range}`,
+    ).then((r) => r.players),
+  getConversation: (botId: string, channel: string, senderId: string) =>
+    request<{ turns: ConversationTurn[] }>(
+      'GET',
+      `/api/bots/${botId}/stats/conversation?channel=${encodeURIComponent(channel)}&sender_id=${encodeURIComponent(senderId)}`,
+    ).then((r) => r.turns),
 
   async uploadDocuments(botId: string, files: File[]): Promise<DocumentItem[]> {
     const form = new FormData()

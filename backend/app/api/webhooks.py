@@ -56,7 +56,10 @@ async def handle_incoming(
     """
     uid = f"fb-{psid}"
     session_id = f"fb-{page_id or 'sim'}-{psid}"
-    result = await bot_service.chat(uid, bot_id, text, session_id)
+    # A dry-run (operator self-test) must not pollute the usage stats.
+    result = await bot_service.chat(
+        uid, bot_id, text, session_id, channel="messenger", log_event=not dry_run
+    )
     if not dry_run:
         await messenger.send_typing(page_token, psid)
         await messenger.send_text(page_token, psid, result["reply"])

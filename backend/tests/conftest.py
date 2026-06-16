@@ -34,10 +34,11 @@ def _clean_db():
     from sqlmodel import Session, delete
 
     from app.db.database import get_engine
-    from app.db.models import Bot, Document
+    from app.db.models import Bot, Document, MessageEvent
 
     yield
     with Session(get_engine()) as session:
+        session.exec(delete(MessageEvent))
         session.exec(delete(Document))
         session.exec(delete(Bot))
         session.commit()

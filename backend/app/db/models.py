@@ -61,6 +61,30 @@ class Bot(SQLModel, table=True):
             return []
 
 
+class MessageEvent(SQLModel, table=True):
+    """One chat turn, recorded for the usage dashboard.
+
+    Denormalized on purpose: a "player" and a "conversation" are derived by grouping
+    on ``sender_id`` / ``session_id`` rather than kept in separate tables. Written
+    once per real turn from ``bot_service.chat`` (web + Messenger); the operator
+    self-test (simulate) is excluded so it never pollutes the numbers.
+    """
+
+    __tablename__ = "message_events"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    created_at: datetime = Field(default_factory=_now, index=True)
+    bot_id: str = Field(index=True, foreign_key="bots.id")
+    channel: str = "web"              # web | messenger
+    sender_id: str = Field(default="", index=True)   # uid (web) / PSID (messenger)
+    session_id: str = Field(default="", index=True)
+    question: str = ""
+    reply: str = ""
+    category: str = ""
+    latency_ms: int = 0
+    degraded: bool = False            # bot fell back / couldn't answer
+
+
 class Document(SQLModel, table=True):
     __tablename__ = "documents"
 

@@ -6,9 +6,11 @@ storage engine is contained to this module.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlmodel import Session, select
 
-from app.db.models import Bot, Document
+from app.db.models import Bot, Document, MessageEvent
 
 
 class BotRepository:
@@ -76,6 +78,38 @@ class BotRepository:
             Bot.messenger_verify_token == token,
         )
         return self.session.exec(stmt).first()
+
+
+class MessageEventRepository:
+    """Read/write the usage-analytics event log (see ``stats_service``)."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def add(self, event: MessageEvent) -> MessageEvent:
+        self.session.add(event)
+        self.session.flush()
+        self.session.refresh(event)
+        return event
+
+    def events_since(self, bot_id: str, since: datetime | None) -> list[MessageEvent]:
+        stmt = select(MessageEvent).where(MessageEvent.bot_id == bot_id)
+        if since is not None:
+            stmt = stmt.where(MessageEvent.created_at >= since)
+        stmt = stmt.order_by(MessageEvent.created_at)
+        return list(self.session.exec(stmt).all())
+
+    def conversation(self, bot_id: str, channel: str, sender_id: str) -> list[MessageEvent]:
+        stmt = (
+            select(MessageEvent)
+            .where(
+                MessageEvent.bot_id == bot_id,
+                MessageEvent.channel == channel,
+                MessageEvent.sender_id == sender_id,
+            )
+            .order_by(MessageEvent.created_at)
+        )
+        return list(self.session.exec(stmt).all())
 
 
 class DocumentRepository:
