@@ -247,7 +247,7 @@ async function openPlayer(p: PlayerRow) {
 }
 .chart-card {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 12px 14px;
 }
 .chart-card h4 {

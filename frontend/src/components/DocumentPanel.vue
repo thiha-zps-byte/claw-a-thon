@@ -13,7 +13,7 @@ import { renderMarkdown } from '@/utils/markdown'
 
 type PreviewKind = 'image' | 'pdf' | 'markdown' | 'csv' | 'text' | 'docx'
 
-const props = defineProps<{ botId: string }>()
+const props = defineProps<{ botId: string; readonly?: boolean }>()
 const store = useBotsStore()
 const toast = useToast()
 const dragging = ref(false)
@@ -204,6 +204,7 @@ function iconFor(name: string): string {
 <template>
   <div class="docs">
     <div
+      v-if="!readonly"
       class="dropzone"
       :class="{ dragging }"
       role="button"
@@ -230,7 +231,7 @@ function iconFor(name: string): string {
       />
     </div>
 
-    <div class="sample-row">
+    <div v-if="!readonly" class="sample-row">
       <Button
         label="Dùng tài liệu mẫu"
         icon="pi pi-sparkles"
@@ -239,7 +240,7 @@ function iconFor(name: string): string {
         size="small"
         @click="openPicker"
       />
-      <span class="muted sample-hint">Chưa có tài liệu? Thử ngay bộ mẫu ZingSpeed để xem bot hoạt động.</span>
+      <span class="muted sample-hint">Chưa có tài liệu? Thử ngay bộ tài liệu mẫu để xem bot hoạt động.</span>
     </div>
 
     <div v-if="uploading" class="uploading muted">
@@ -275,6 +276,7 @@ function iconFor(name: string): string {
           @click="previewDoc(d)"
         />
         <Button
+          v-if="!readonly"
           icon="pi pi-trash"
           severity="danger"
           text
@@ -289,7 +291,7 @@ function iconFor(name: string): string {
     <Dialog
       v-model:visible="showPicker"
       modal
-      header="Tài liệu mẫu (ZingSpeed Mobile)"
+      header="Tài liệu mẫu"
       :style="{ width: '34rem', maxWidth: '94vw' }"
     >
       <p class="muted picker-intro">

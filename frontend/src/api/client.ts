@@ -30,6 +30,8 @@ export interface Bot {
   enabled_skills: string[]
   enabled_mcp: string[]
   model: string
+  // Shared "dùng chung" bot: everyone sees it read-only; only owner (UID "admin") edits.
+  is_shared?: boolean
   // --- Facebook Messenger channel ---
   // Read back from the server:
   messenger_enabled?: boolean
@@ -224,6 +226,10 @@ export const api = {
   // Auto-subscribe the Page to message events (skips the manual Meta dashboard step).
   subscribeMessenger: (botId: string, creds: { page_token?: string } = {}) =>
     request<MessengerValidateResult>('POST', `/api/bots/${botId}/messenger/subscribe`, creds),
+
+  // Verify the optional admin token to unlock "admin" mode (edits the shared bot).
+  adminLogin: (token: string) =>
+    request<{ ok: boolean; reason?: string }>('POST', '/api/admin/login', { token }),
 
   // --- usage dashboard ---
   getStatsOverview: (botId: string, range: string) =>

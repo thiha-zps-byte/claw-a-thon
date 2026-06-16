@@ -19,7 +19,7 @@ defineProps<{
   flex: 1 1 150px;
   min-width: 140px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 12px 14px;
   display: flex;
   flex-direction: column;

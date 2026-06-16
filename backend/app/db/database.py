@@ -75,6 +75,7 @@ def init_db() -> None:
 # missing *tables*, never missing *columns*, so we add them by hand for an existing
 # DB. SQLite-only and idempotent (skips any column already present).
 _BOT_ADDED_COLUMNS: dict[str, str] = {
+    "is_shared": "BOOLEAN NOT NULL DEFAULT 0",
     "messenger_enabled": "BOOLEAN NOT NULL DEFAULT 0",
     "messenger_page_id": "VARCHAR NOT NULL DEFAULT ''",
     "messenger_verify_token": "VARCHAR NOT NULL DEFAULT ''",

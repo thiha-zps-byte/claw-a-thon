@@ -39,6 +39,9 @@ class Bot(SQLModel, table=True):
     enabled_skills: str = "[]"
     enabled_mcp: str = "[]"
     model: str = ""                   # empty → use default LLM_MODEL
+    # Shared "công khai" bot: visible read-only to every user; only owner_uid=="admin"
+    # may edit. Seeded once on startup. Normal bots leave this False.
+    is_shared: bool = False
     # Facebook Messenger channel (per-bot). One Page ⇄ one bot; routing is by page id.
     # Tokens/secret are write-only to the client (see bot_service.bot_to_dict).
     messenger_enabled: bool = False

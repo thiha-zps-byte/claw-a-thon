@@ -74,6 +74,8 @@ class Settings:
     # Limits
     max_upload_mb: int
     context_token_budget: int
+    # Optional gate for the "admin" UI mode (edits the shared bot). Empty = no gate.
+    admin_token: str
 
     @property
     def upload_dir(self) -> Path:
@@ -118,6 +120,7 @@ def get_settings(require_secrets: bool = True) -> Settings:
         ),
         max_upload_mb=int(_optional("MAX_UPLOAD_MB", "32") or "32"),
         context_token_budget=int(_optional("CONTEXT_TOKEN_BUDGET", "12000") or "12000"),
+        admin_token=_optional("ADMIN_TOKEN"),
     )
 
 

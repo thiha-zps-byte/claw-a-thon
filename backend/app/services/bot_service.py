@@ -40,6 +40,8 @@ def bot_to_dict(bot: Bot, doc_count: int | None = None) -> dict:
         "enabled_skills": bot.skills(),
         "enabled_mcp": bot.mcp(),
         "model": bot.model,
+        # Shared bot flag — the frontend derives can-edit from owner_uid == current uid.
+        "is_shared": bot.is_shared,
         # Messenger channel: non-secret fields are returned as-is; tokens/secret are
         # write-only — we expose only a boolean "is it set" so the UI can show "đã lưu"
         # without ever shipping the secret back to the client.
@@ -133,12 +135,57 @@ def create_bot(owner_uid: str, data: dict) -> dict:
         return bot_to_dict(bot, doc_count=0)
 
 
+SHARED_BOT_NAME = "Trợ lý CSKH Claw A Thon Game"
+SHARED_BOT_OWNER = "admin"
+
+
+def seed_shared_bot() -> None:
+    """Create the shared (công khai) demo bot once — idempotent, runs on startup.
+
+    Owned by ``admin`` and flagged ``is_shared`` so every user can preview it read-only
+    while only ``admin`` may edit. Loads the bundled sample docs so it works out of the
+    box; ``admin`` configures it further later. Never raises — a seeding failure must
+    not block boot.
+    """
+    from app import sample_docs
+    from app.db.repository import BotRepository
+
+    try:
+        with get_session() as session:
+            repo = BotRepository(session)
+            if repo.list_shared():  # already seeded → leave it (admin's edits stay)
+                return
+            bot = Bot(
+                owner_uid=SHARED_BOT_OWNER,
+                is_shared=True,
+                name=SHARED_BOT_NAME,
+                description=(
+                    "Bot mẫu dùng chung để mọi người xem thử trợ lý chăm sóc khách hàng "
+                    "cho game Claw A Thon."
+                ),
+                player_term="bạn",
+                self_term="mình",
+                tone="thân thiện, chuyên nghiệp",
+            )
+            repo.create(bot)
+            bot_id = bot.id
+        sample_ids = [s["id"] for s in sample_docs.list_samples()]
+        if sample_ids:
+            add_sample_documents(SHARED_BOT_OWNER, bot_id, sample_ids)
+        _log.info("seeded shared bot %s with %d sample docs", bot_id, len(sample_ids))
+    except Exception:  # noqa: BLE001
+        _log.warning("failed to seed shared bot", exc_info=True)
+
+
 def list_bots(owner_uid: str) -> list[dict]:
     from app.db.repository import BotRepository
 
     with get_session() as session:
         repo = BotRepository(session)
+        # Own bots + every shared (công khai) bot, deduped (admin owns the shared one).
         bots = repo.list_for_owner(owner_uid)
+        own_ids = {b.id for b in bots}
+        bots += [b for b in repo.list_shared() if b.id not in own_ids]
         return [bot_to_dict(b, doc_count=len(repo.documents_of(b.id))) for b in bots]
 
 
@@ -147,7 +194,7 @@ def get_bot_detail(owner_uid: str, bot_id: str) -> dict:
 
     with get_session() as session:
         repo = BotRepository(session)
-        bot = repo.get_for_owner(bot_id, owner_uid)
+        bot = repo.get_viewable(bot_id, owner_uid)
         if bot is None:
             raise not_found("Không tìm thấy bot này.")
         docs = repo.documents_of(bot_id)
@@ -189,6 +236,9 @@ def delete_bot(owner_uid: str, bot_id: str) -> dict:
         bot = repo.get_for_owner(bot_id, owner_uid)
         if bot is None:
             raise not_found("Không tìm thấy bot này.")
+        if bot.is_shared:
+            # Managed fixture: it would respawn on the next startup seed anyway.
+            raise validation_error("Không thể xóa bot dùng chung.")
         repo.delete(bot)
     agent_service.invalidate(bot_id)
     return {"deleted": True, "id": bot_id}
@@ -260,7 +310,7 @@ def get_document(owner_uid: str, bot_id: str, doc_id: str) -> dict:
     from app.db.repository import BotRepository, DocumentRepository
 
     with get_session() as session:
-        bot = BotRepository(session).get_for_owner(bot_id, owner_uid)
+        bot = BotRepository(session).get_viewable(bot_id, owner_uid)
         if bot is None:
             raise not_found("Không tìm thấy bot này.")
         doc = DocumentRepository(session).get(doc_id)
@@ -270,12 +320,12 @@ def get_document(owner_uid: str, bot_id: str, doc_id: str) -> dict:
 
 
 def get_document_raw(owner_uid: str, bot_id: str, doc_id: str) -> tuple[bytes, str, str]:
-    """Return (raw bytes, mime, filename) of an uploaded document, owner-scoped."""
+    """Return (raw bytes, mime, filename) of an uploaded document (viewable bots)."""
     from app import storage
     from app.db.repository import BotRepository, DocumentRepository
 
     with get_session() as session:
-        bot = BotRepository(session).get_for_owner(bot_id, owner_uid)
+        bot = BotRepository(session).get_viewable(bot_id, owner_uid)
         if bot is None:
             raise not_found("Không tìm thấy bot này.")
         doc = DocumentRepository(session).get(doc_id)
@@ -292,7 +342,7 @@ def list_documents(owner_uid: str, bot_id: str) -> list[dict]:
     from app.db.repository import BotRepository, DocumentRepository
 
     with get_session() as session:
-        bot = BotRepository(session).get_for_owner(bot_id, owner_uid)
+        bot = BotRepository(session).get_viewable(bot_id, owner_uid)
         if bot is None:
             raise not_found("Không tìm thấy bot này.")
         docs = DocumentRepository(session).list_for_bot(bot_id)
@@ -350,9 +400,11 @@ async def chat(
         message = message[:MAX_MESSAGE_CHARS]
 
     # Load bot + documents, detach so the LLM call doesn't hold a DB connection.
+    # ``require_owner`` (web studio) still lets anyone chat a shared (công khai) bot —
+    # preview is open; only writes stay owner-scoped.
     with get_session() as session:
         repo = BotRepository(session)
-        bot = repo.get_for_owner(bot_id, uid) if require_owner else repo.get(bot_id)
+        bot = repo.get_viewable(bot_id, uid) if require_owner else repo.get(bot_id)
         if bot is None:
             raise not_found("Bot không tồn tại hoặc đã bị xóa. Vui lòng chọn bot khác.")
         documents = repo.documents_of(bot_id)

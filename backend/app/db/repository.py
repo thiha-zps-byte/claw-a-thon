@@ -32,6 +32,17 @@ class BotRepository:
             return None
         return bot
 
+    def get_viewable(self, bot_id: str, uid: str) -> Bot | None:
+        """A bot the uid may *read*: their own, or any shared (công khai) bot."""
+        bot = self.session.get(Bot, bot_id)
+        if bot is None or (bot.owner_uid != uid and not bot.is_shared):
+            return None
+        return bot
+
+    def list_shared(self) -> list[Bot]:
+        stmt = select(Bot).where(Bot.is_shared == True)  # noqa: E712 — SQL boolean
+        return list(self.session.exec(stmt).all())
+
     def list_for_owner(self, owner_uid: str) -> list[Bot]:
         stmt = select(Bot).where(Bot.owner_uid == owner_uid).order_by(Bot.created_at.desc())
         return list(self.session.exec(stmt).all())

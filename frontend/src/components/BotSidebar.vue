@@ -4,27 +4,29 @@ import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import { useToast } from 'primevue/usetoast'
 import BotForm from './BotForm.vue'
-import IntegrationForm from './IntegrationForm.vue'
 import DocumentPanel from './DocumentPanel.vue'
 import SkeletonList from './SkeletonList.vue'
 import EmptyState from './EmptyState.vue'
 import emptyBots from '@/assets/svg/empty-bots.svg'
 import { useBotsStore } from '@/stores/bots'
+import { useUserStore } from '@/stores/user'
 import { ApiException, type Bot } from '@/api/client'
 
 const store = useBotsStore()
+const user = useUserStore()
 const toast = useToast()
 const showCreate = ref(false)
 const creating = ref(false)
-const savingConnect = ref(false)
-const step = ref<1 | 2 | 3>(1)
+const step = ref<1 | 2>(1)
 const newBotId = ref<string | null>(null)
 
-const stepHeader = computed(() => {
-  if (step.value === 1) return 'Tạo bot mới · Bước 1/3: Thông tin'
-  if (step.value === 2) return 'Tạo bot mới · Bước 2/3: Tài liệu'
-  return 'Tạo bot mới · Bước 3/3: Kết nối'
-})
+// A new user only ever sees the shared demo bot (it's always in the list), so the
+// empty-state never shows — surface a clear "create your own" prompt in that case.
+const hasOwnBot = computed(() => store.bots.some((b) => b.owner_uid === user.uid))
+
+const stepHeader = computed(() =>
+  step.value === 1 ? 'Tạo bot mới · Bước 1/2: Thông tin' : 'Tạo bot mới · Bước 2/2: Tài liệu',
+)
 
 function openCreate() {
   step.value = 1
@@ -46,22 +48,6 @@ async function onInfoSubmit(data: Partial<Bot>) {
     toast.add({ severity: 'error', summary: 'Lỗi', detail: msg, life: 5000 })
   } finally {
     creating.value = false
-  }
-}
-
-// Step 3 → save the Messenger connection (optional), then close.
-async function onConnectSubmit(data: Partial<Bot>) {
-  if (!newBotId.value) return
-  savingConnect.value = true
-  try {
-    await store.updateBot(newBotId.value, data)
-    toast.add({ severity: 'success', summary: 'Đã lưu kết nối Messenger', life: 2500 })
-    finish()
-  } catch (e) {
-    const msg = e instanceof ApiException ? e.message : 'Lưu kết nối thất bại.'
-    toast.add({ severity: 'error', summary: 'Lỗi', detail: msg, life: 5000 })
-  } finally {
-    savingConnect.value = false
   }
 }
 
@@ -88,24 +74,35 @@ function finish() {
       <Button label="Tạo bot" icon="pi pi-plus" @click="openCreate" />
     </EmptyState>
 
-    <ul v-else class="bot-list">
-      <li v-for="b in store.bots" :key="b.id">
-        <button
-          type="button"
-          class="bot-item"
-          :class="{ active: store.currentBot?.id === b.id }"
-          @click="store.selectBot(b.id)"
-        >
-          <span class="avatar" aria-hidden="true">{{ b.name.charAt(0).toUpperCase() }}</span>
-          <span class="bot-info">
-            <span class="bot-name">{{ b.name }}</span>
-            <span class="muted bot-sub">
-              <i class="pi pi-file" aria-hidden="true" /> {{ b.document_count ?? 0 }} tài liệu
+    <template v-else>
+      <div v-if="!hasOwnBot" class="own-cta">
+        <span class="own-cta-title">Bạn chưa có bot nào</span>
+        <span class="own-cta-hint">Tạo trợ lý CS cho game của bạn. Bot mẫu bên dưới chỉ để xem thử.</span>
+        <Button label="Tạo bot của bạn" icon="pi pi-plus" size="small" @click="openCreate" />
+      </div>
+      <ul class="bot-list">
+        <li v-for="b in store.bots" :key="b.id">
+          <button
+            type="button"
+            class="bot-item"
+            :class="{ active: store.currentBot?.id === b.id }"
+            @click="store.selectBot(b.id)"
+          >
+            <span class="avatar" aria-hidden="true">{{ b.name.charAt(0).toUpperCase() }}</span>
+            <span class="bot-info">
+              <span class="bot-name">{{ b.name }}</span>
+              <span v-if="b.is_shared" class="shared-tag">
+                <i class="pi pi-users" aria-hidden="true" />
+                {{ b.owner_uid === user.uid ? 'Dùng chung' : 'Dùng chung · chỉ xem' }}
+              </span>
+              <span class="muted bot-sub">
+                <i class="pi pi-file" aria-hidden="true" /> {{ b.document_count ?? 0 }} tài liệu
+              </span>
             </span>
-          </span>
-        </button>
-      </li>
-    </ul>
+          </button>
+        </li>
+      </ul>
+    </template>
 
     <Dialog
       v-model:visible="showCreate"
@@ -132,25 +129,8 @@ function finish() {
         </p>
         <DocumentPanel v-if="newBotId" :bot-id="newBotId" />
         <div class="wizard-actions">
-          <Button label="Bỏ qua tài liệu" text severity="secondary" @click="step = 3" />
-          <Button label="Tiếp tục → Kết nối" icon="pi pi-arrow-right" @click="step = 3" />
-        </div>
-      </template>
-
-      <template v-else>
-        <p class="step2-hint">
-          Kết nối bot với Facebook Messenger để trả lời người chơi ngay trên Page. Có thể
-          <strong>để sau</strong> — vào tab «Kết nối» của bot bất cứ lúc nào.
-        </p>
-        <IntegrationForm
-          v-if="newBotId"
-          :bot-id="newBotId"
-          submit-label="Hoàn tất & lưu kết nối"
-          :submitting="savingConnect"
-          @submit="onConnectSubmit"
-        />
-        <div class="wizard-actions">
-          <Button label="Bỏ qua, để sau" text severity="secondary" @click="finish" />
+          <Button label="Bỏ qua" text severity="secondary" @click="finish" />
+          <Button label="Hoàn tất" icon="pi pi-check" @click="finish" />
         </div>
       </template>
     </Dialog>
@@ -177,6 +157,26 @@ function finish() {
 .sidebar-title {
   font-size: 1rem;
   font-weight: 700;
+}
+.own-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: var(--green-soft);
+  border: 1px solid #cdf0dc;
+  border-radius: var(--radius);
+}
+.own-cta-title {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.own-cta-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.45;
 }
 .bot-list {
   list-style: none;
@@ -231,6 +231,19 @@ function finish() {
 }
 .bot-sub {
   font-size: 0.78rem;
+}
+.shared-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  margin: 2px 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--green-soft);
+  color: var(--green);
+  font-size: 0.68rem;
+  font-weight: 600;
 }
 .needs {
   background: var(--green-soft);

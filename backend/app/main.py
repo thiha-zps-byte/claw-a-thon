@@ -20,6 +20,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse
 from starlette.staticfiles import StaticFiles
 
+from app.api import admin as admin_api
 from app.api import bots as bots_api
 from app.api import stats as stats_api
 from app.api import webhooks as webhooks_api
@@ -58,6 +59,7 @@ app.add_middleware(
 bots_api.register(app)
 webhooks_api.register(app)
 stats_api.register(app)
+admin_api.register(app)
 
 
 # --- frontend (SPA) -----------------------------------------------------------
@@ -136,4 +138,8 @@ def health_check() -> PingStatus:
 
 
 if __name__ == "__main__":
+    # Seed the shared (công khai) demo bot on startup — idempotent, never blocks boot.
+    from app.services import bot_service
+
+    bot_service.seed_shared_bot()
     app.run(port=settings.port, host=settings.host)

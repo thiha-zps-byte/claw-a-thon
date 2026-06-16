@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'
 import Button from 'primevue/button'
+import Tag from 'primevue/tag'
 import Dialog from 'primevue/dialog'
 import { useToast } from 'primevue/usetoast'
 import ChatPanel from './ChatPanel.vue'
@@ -12,14 +13,20 @@ import BotForm from './BotForm.vue'
 import IntegrationForm from './IntegrationForm.vue'
 import StatsPanel from './StatsPanel.vue'
 import { useBotsStore } from '@/stores/bots'
+import { useUserStore } from '@/stores/user'
 import { ApiException, type Bot } from '@/api/client'
 
 const props = defineProps<{ bot: Bot }>()
 const store = useBotsStore()
+const user = useUserStore()
 const toast = useToast()
 const activeTab = ref('chat')
 const saving = ref(false)
 const confirmDelete = ref(false)
+
+// A shared "dùng chung" bot is read-only for everyone except its owner (UID "admin").
+const editable = computed(() => props.bot.owner_uid === user.uid)
+const readonly = computed(() => !editable.value)
 
 watch(
   () => props.bot.id,
@@ -60,13 +67,27 @@ async function remove() {
       <div class="ws-title">
         <span class="ws-avatar" aria-hidden="true">{{ bot.name.charAt(0).toUpperCase() }}</span>
         <div>
-          <h2 class="ws-name">{{ bot.name }}</h2>
+          <h2 class="ws-name">
+            {{ bot.name }}
+            <Tag
+              v-if="bot.is_shared"
+              :value="editable ? 'Dùng chung' : 'Dùng chung · Chỉ xem'"
+              :icon="editable ? 'pi pi-users' : 'pi pi-lock'"
+              severity="info"
+              rounded
+            />
+          </h2>
           <span class="muted ws-sub">
             Gọi người chơi là «{{ bot.player_term }}» · tự xưng «{{ bot.self_term }}»
           </span>
         </div>
       </div>
     </div>
+
+    <p v-if="bot.is_shared && readonly" class="shared-banner">
+      <i class="pi pi-info-circle" aria-hidden="true" />
+      Đây là bot dùng chung để xem thử — chỉ admin chỉnh sửa được. Bạn vẫn xem đầy đủ và chat thử được.
+    </p>
 
     <Tabs v-model:value="activeTab" class="ws-tabs">
       <TabList>
@@ -83,16 +104,17 @@ async function remove() {
       <Transition name="fade" mode="out-in">
         <ChatPanel v-if="activeTab === 'chat'" key="chat" :bot="bot" class="panel-chat" />
         <div v-else-if="activeTab === 'docs'" key="docs" class="panel-scroll">
-          <DocumentPanel :bot-id="bot.id" />
+          <DocumentPanel :bot-id="bot.id" :readonly="readonly" />
         </div>
         <div v-else-if="activeTab === 'config'" key="config" class="panel-scroll">
           <BotForm
             :initial="bot"
             submit-label="Lưu thay đổi"
             :submitting="saving"
+            :readonly="readonly"
             @submit="save"
           />
-          <div class="danger-zone">
+          <div v-if="editable && !bot.is_shared" class="danger-zone">
             <span class="muted">Xóa bot sẽ xóa luôn toàn bộ tài liệu của bot.</span>
             <Button
               label="Xóa bot"
@@ -109,6 +131,7 @@ async function remove() {
             :initial="bot"
             submit-label="Lưu kết nối"
             :submitting="saving"
+            :readonly="readonly"
             @submit="save"
           />
         </div>
@@ -160,9 +183,30 @@ async function remove() {
 .ws-name {
   font-size: 1.1rem;
   font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ws-name :deep(.p-tag) {
+  font-size: 0.72rem;
 }
 .ws-sub {
   font-size: 0.82rem;
+}
+.shared-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 22px;
+  background: var(--green-soft);
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  border-bottom: 1px solid var(--border);
+}
+.shared-banner .pi {
+  color: var(--green);
 }
 .ws-tabs {
   flex: 0 0 auto;

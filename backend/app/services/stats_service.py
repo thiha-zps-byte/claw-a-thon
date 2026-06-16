@@ -38,8 +38,9 @@ def _since(range_: str) -> datetime | None:
 
 
 def _owned_bot(uid: str, bot_id: str):
+    # Shared (công khai) bots are viewable by everyone (read-only dashboard).
     with get_session() as session:
-        bot = BotRepository(session).get_for_owner(bot_id, uid)
+        bot = BotRepository(session).get_viewable(bot_id, uid)
         if bot is None:
             raise not_found("Không tìm thấy bot này.")
 

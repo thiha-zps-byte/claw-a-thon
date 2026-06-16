@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import Toast from 'primevue/toast'
+import { useToast } from 'primevue/usetoast'
 import AppHeader from '@/components/AppHeader.vue'
 import BotSidebar from '@/components/BotSidebar.vue'
 import BotWorkspace from '@/components/BotWorkspace.vue'
@@ -9,10 +10,21 @@ import emptyBots from '@/assets/svg/empty-bots.svg'
 import { useBotsStore } from '@/stores/bots'
 
 const store = useBotsStore()
+const toast = useToast()
 
 async function bootstrap() {
   store.clearSelection()
-  await store.loadBots()
+  try {
+    await store.loadBots()
+    // Land the user in a working bot instead of a blank screen. List order is
+    // "own bots (newest first) → shared", so returning users get their latest bot
+    // and newcomers get the shared demo.
+    if (!store.currentBot && store.bots.length) {
+      await store.selectBot(store.bots[0].id)
+    }
+  } catch {
+    toast.add({ severity: 'error', summary: 'Không tải được danh sách bot', life: 4000 })
+  }
 }
 
 function reloadForUser() {

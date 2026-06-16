@@ -9,6 +9,7 @@ const props = defineProps<{
   initial?: Partial<Bot>
   submitLabel: string
   submitting?: boolean
+  readonly?: boolean
 }>()
 const emit = defineEmits<{ (e: 'submit', data: Partial<Bot>): void }>()
 
@@ -18,7 +19,7 @@ const form = reactive<Partial<Bot>>({
   name: '',
   description: '',
   persona: '',
-  player_term: 'tay đua',
+  player_term: 'bạn',
   self_term: 'mình',
   tone: 'thân thiện, chuyên nghiệp',
 })
@@ -40,13 +41,14 @@ function submit() {
   <form class="bot-form" @submit.prevent="submit">
     <label class="field">
       <span class="field-label">Tên game / bot <span class="req">*</span></span>
-      <InputText v-model="form.name" placeholder="VD: ZingSpeed Mobile" aria-label="Tên bot" />
+      <InputText v-model="form.name" :disabled="readonly" placeholder="VD: Tên game của bạn" aria-label="Tên bot" />
     </label>
 
     <label class="field">
       <span class="field-label">Mô tả vai trò</span>
       <Textarea
         v-model="form.description"
+        :disabled="readonly"
         rows="2"
         auto-resize
         placeholder="VD: Hỗ trợ người chơi về tài khoản, nạp thẻ, sự kiện…"
@@ -57,23 +59,24 @@ function submit() {
     <div class="row">
       <label class="field">
         <span class="field-label">Gọi người chơi là</span>
-        <InputText v-model="form.player_term" placeholder="tay đua" aria-label="Cách gọi người chơi" />
+        <InputText v-model="form.player_term" :disabled="readonly" placeholder="bạn" aria-label="Cách gọi người chơi" />
       </label>
       <label class="field">
         <span class="field-label">Bot tự xưng là</span>
-        <InputText v-model="form.self_term" placeholder="mình" aria-label="Cách bot tự xưng" />
+        <InputText v-model="form.self_term" :disabled="readonly" placeholder="mình" aria-label="Cách bot tự xưng" />
       </label>
     </div>
 
     <label class="field">
       <span class="field-label">Tông giọng</span>
-      <InputText v-model="form.tone" placeholder="thân thiện, chuyên nghiệp" aria-label="Tông giọng" />
+      <InputText v-model="form.tone" :disabled="readonly" placeholder="thân thiện, chuyên nghiệp" aria-label="Tông giọng" />
     </label>
 
     <label class="field">
       <span class="field-label">Tính cách / chỉ dẫn riêng (persona)</span>
       <Textarea
         v-model="form.persona"
+        :disabled="readonly"
         rows="3"
         auto-resize
         placeholder="Mô tả thêm cách bot nên cư xử, ưu tiên gì…"
@@ -89,7 +92,7 @@ function submit() {
       </span>
     </p>
 
-    <div class="actions">
+    <div v-if="!readonly" class="actions">
       <Button
         type="submit"
         :label="submitLabel"

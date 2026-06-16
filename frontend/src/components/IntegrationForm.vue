@@ -10,6 +10,7 @@ const props = defineProps<{
   initial?: Partial<Bot>
   submitLabel: string
   submitting?: boolean
+  readonly?: boolean
 }>()
 const emit = defineEmits<{ (e: 'submit', data: Partial<Bot>): void }>()
 
@@ -120,13 +121,13 @@ function submit() {
 <template>
   <form class="integration-form" @submit.prevent="submit">
     <label class="switch-row">
-      <ToggleSwitch v-model="form.messenger_enabled" />
+      <ToggleSwitch v-model="form.messenger_enabled" :disabled="readonly" />
       <span class="field-label">Bật kết nối Facebook Messenger</span>
     </label>
 
     <label class="field">
       <span class="field-label">Page ID</span>
-      <InputText v-model="form.messenger_page_id" placeholder="VD: 102345678901234" aria-label="Page ID" />
+      <InputText v-model="form.messenger_page_id" :disabled="readonly" placeholder="VD: 102345678901234" aria-label="Page ID" />
       <span class="field-hint">ID của Facebook Page (Trang) sẽ kết nối với bot này.</span>
     </label>
 
@@ -134,6 +135,7 @@ function submit() {
       <span class="field-label">Verify Token</span>
       <InputText
         v-model="form.messenger_verify_token"
+        :disabled="readonly"
         placeholder="Chuỗi bạn tự đặt, dùng khi cấu hình webhook"
         aria-label="Verify Token"
       />
@@ -144,6 +146,7 @@ function submit() {
       <span class="field-label">Page Access Token</span>
       <InputText
         v-model="form.messenger_page_token"
+        :disabled="readonly"
         type="password"
         :placeholder="pageTokenSet ? '•••••••• (đã lưu — để trống nếu giữ nguyên)' : 'EAAB...'"
         aria-label="Page Access Token"
@@ -154,6 +157,7 @@ function submit() {
       <span class="field-label">App Secret</span>
       <InputText
         v-model="form.messenger_app_secret"
+        :disabled="readonly"
         type="password"
         :placeholder="appSecretSet ? '•••••••• (đã lưu — để trống nếu giữ nguyên)' : 'App Secret của Meta App'"
         aria-label="App Secret"
@@ -162,7 +166,7 @@ function submit() {
     </label>
 
     <!-- Validate ID + token -->
-    <div class="inline-action">
+    <div v-if="!readonly" class="inline-action">
       <Button
         type="button"
         label="Kiểm tra kết nối"
@@ -185,7 +189,7 @@ function submit() {
     </div>
 
     <!-- Auto-subscribe the Page (skips the manual Meta dashboard step) -->
-    <div class="inline-action">
+    <div v-if="!readonly" class="inline-action">
       <Button
         type="button"
         label="Đăng ký Page nhận tin"
@@ -224,7 +228,7 @@ function submit() {
     </div>
 
     <!-- Self-test before connecting a real Page -->
-    <div class="test-box">
+    <div v-if="!readonly" class="test-box">
       <span class="field-label">Gửi thử (giả lập Messenger)</span>
       <span class="field-hint">
         Kiểm tra bot trả lời thế nào mà chưa cần Page thật — chạy đúng luồng như tin nhắn Messenger.
@@ -254,7 +258,7 @@ function submit() {
       </Transition>
     </div>
 
-    <div class="actions">
+    <div v-if="!readonly" class="actions">
       <Button type="submit" :label="submitLabel" icon="pi pi-check" :loading="submitting" />
     </div>
   </form>
