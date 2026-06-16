@@ -17,10 +17,12 @@ a passing simulation reflects real runtime behaviour.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
 
+import httpx
 from starlette.background import BackgroundTask
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
@@ -31,9 +33,43 @@ from app.core.errors import not_found
 from app.core.logging import get_logger
 from app.db.database import get_session
 from app.db.repository import BotRepository
+from app.ingest import image_vision
 from app.services import bot_service
 
 log = get_logger("webhooks")
+
+# Cap images processed per turn (each costs a vision call).
+_MAX_IMAGES = 3
+
+
+async def _download(url: str) -> tuple[bytes, str]:
+    """Fetch an attachment's bytes + mime. Raises on failure (caller handles)."""
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        resp = await client.get(url)
+        resp.raise_for_status()
+        mime = resp.headers.get("content-type", "image/jpeg").split(";")[0].strip()
+        return resp.content, mime or "image/jpeg"
+
+
+async def _describe_images(image_urls) -> list[str]:
+    """Turn each image URL into a text description via the vision model (best-effort)."""
+    out: list[str] = []
+    for url in list(image_urls)[:_MAX_IMAGES]:
+        try:
+            raw, mime = await _download(url)
+            desc = await asyncio.to_thread(image_vision.extract_image, raw, mime)
+            out.append(desc.strip() or "(ảnh không có nội dung đọc được)")
+        except Exception as exc:  # noqa: BLE001 — a bad image must not drop the turn
+            log.warning("image describe failed: %s", type(exc).__name__)
+            out.append("(không đọc được ảnh)")
+    return out
+
+
+def _compose_message(text: str, descriptions: list[str]) -> str:
+    """Merge the caption (if any) with image descriptions into one chat message."""
+    parts = [p for p in [(text or "").strip()] if p]
+    parts += [f"[Ảnh đính kèm] {d}" for d in descriptions]
+    return "\n".join(parts) or "[Người dùng gửi một ảnh]"
 
 
 # --- shared inbound pipeline --------------------------------------------------
@@ -46,19 +82,22 @@ async def handle_incoming(
     psid: str,
     text: str,
     *,
+    image_urls=(),
     dry_run: bool = False,
 ) -> dict:
     """Run one inbound Messenger message through the chat pipeline.
 
     The player is not the bot's owner, so ``require_owner`` is off. uid/session are
     scoped per (page, sender) so each Messenger user keeps their own memory thread.
+    Attached images are read by the vision model and merged into the message.
     When ``dry_run`` is set, the reply is returned but not delivered to Facebook.
     """
     uid = f"fb-{psid}"
     session_id = f"fb-{page_id or 'sim'}-{psid}"
+    message = _compose_message(text, await _describe_images(image_urls))
     # A dry-run (operator self-test) must not pollute the usage stats.
     result = await bot_service.chat(
-        uid, bot_id, text, session_id, channel="messenger", log_event=not dry_run
+        uid, bot_id, message, session_id, channel="messenger", log_event=not dry_run
     )
     if not dry_run:
         await messenger.send_typing(page_token, psid)
@@ -74,16 +113,19 @@ async def handle_comment(
     commenter_id: str,
     text: str,
     *,
+    image_urls=(),
     dry_run: bool = False,
 ) -> dict:
     """Answer a Page post comment by sending the commenter a private reply (DM).
 
     Same chat pipeline as a Messenger DM; routed/scoped per (page, commenter).
+    Any photo on the comment is read by the vision model and merged into the message.
     """
     uid = f"fb-{commenter_id}"
     session_id = f"fb-{page_id or 'sim'}-{commenter_id}"
+    message = _compose_message(text, await _describe_images(image_urls))
     result = await bot_service.chat(
-        uid, bot_id, text, session_id, channel="messenger", log_event=not dry_run
+        uid, bot_id, message, session_id, channel="messenger", log_event=not dry_run
     )
     if not dry_run:
         await messenger.private_reply(page_token, comment_id, result["reply"])
@@ -126,8 +168,8 @@ async def _receive_events(request: Request) -> Response:
     if not isinstance(data, dict) or data.get("object") != "page":
         return PlainTextResponse("ok")
 
-    jobs: list[tuple[str, str, str, str, str]] = []
-    comment_jobs: list[tuple[str, str, str, str, str, str]] = []
+    jobs: list[tuple] = []          # (bot_id, page_token, page_id, psid, text, image_urls)
+    comment_jobs: list[tuple] = []  # (bot_id, page_token, page_id, comment_id, from_id, text, image_urls)
     with get_session() as session:
         repo = BotRepository(session)
         for entry in data.get("entry", []):
@@ -144,14 +186,21 @@ async def _receive_events(request: Request) -> Response:
             # Messenger DMs.
             for event in entry.get("messaging", []):
                 message = event.get("message") or {}
-                text = message.get("text")
-                # Skip echoes (our own outbound) and non-text events.
-                if not text or message.get("is_echo"):
+                if message.get("is_echo"):  # skip our own outbound
                     continue
+                text = message.get("text") or ""
+                images = [
+                    (a.get("payload") or {}).get("url")
+                    for a in (message.get("attachments") or [])
+                    if a.get("type") == "image" and (a.get("payload") or {}).get("url")
+                ]
                 psid = (event.get("sender") or {}).get("id")
-                if not psid:
+                # Need a sender and at least text or an image.
+                if not psid or not (text or images):
                     continue
-                jobs.append((bot.id, bot.messenger_page_token, page_id, str(psid), text))
+                jobs.append(
+                    (bot.id, bot.messenger_page_token, page_id, str(psid), text, images)
+                )
             # Post comments (feed) → private-reply the commenter.
             for change in entry.get("changes", []):
                 if change.get("field") != "feed":
@@ -160,13 +209,16 @@ async def _receive_events(request: Request) -> Response:
                 if v.get("item") != "comment" or v.get("verb") != "add":
                     continue
                 from_id = str((v.get("from") or {}).get("id") or "")
-                text = v.get("message")
+                text = v.get("message") or ""
                 comment_id = v.get("comment_id")
-                # Skip the Page's own comments (its replies) to avoid an echo loop.
-                if not text or not comment_id or not from_id or from_id == page_id:
+                photo = v.get("photo")
+                images = [photo] if photo else []
+                # Skip the Page's own comments (its replies) to avoid an echo loop,
+                # and comments with neither text nor a photo.
+                if not comment_id or not from_id or from_id == page_id or not (text or images):
                     continue
                 comment_jobs.append(
-                    (bot.id, bot.messenger_page_token, page_id, str(comment_id), from_id, text)
+                    (bot.id, bot.messenger_page_token, page_id, str(comment_id), from_id, text, images)
                 )
 
     # Deliver after the response is sent → Facebook gets a prompt 200, no retries.
@@ -177,14 +229,16 @@ async def _receive_events(request: Request) -> Response:
 
 
 async def _run_all_jobs(jobs, comment_jobs) -> None:
-    for bot_id, page_token, page_id, psid, text in jobs:
+    for bot_id, page_token, page_id, psid, text, images in jobs:
         try:
-            await handle_incoming(bot_id, page_token, page_id, psid, text)
+            await handle_incoming(bot_id, page_token, page_id, psid, text, image_urls=images)
         except Exception as exc:  # noqa: BLE001 — one bad message must not drop the rest
             log.warning("messenger handle failed (bot=%s): %s", bot_id, type(exc).__name__)
-    for bot_id, page_token, page_id, comment_id, from_id, text in comment_jobs:
+    for bot_id, page_token, page_id, comment_id, from_id, text, images in comment_jobs:
         try:
-            await handle_comment(bot_id, page_token, page_id, comment_id, from_id, text)
+            await handle_comment(
+                bot_id, page_token, page_id, comment_id, from_id, text, image_urls=images
+            )
         except Exception as exc:  # noqa: BLE001 — one bad comment must not drop the rest
             log.warning("comment handle failed (bot=%s): %s", bot_id, type(exc).__name__)
 
