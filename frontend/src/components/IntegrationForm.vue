@@ -78,45 +78,6 @@ async function copyCallback() {
   }
 }
 
-// --- validate (ID + token against Graph API) ---
-const validating = ref(false)
-const validateResult = ref<{ ok: boolean; message: string } | null>(null)
-async function validate() {
-  validating.value = true
-  validateResult.value = null
-  try {
-    const r = await api.validateMessenger(props.botId, {
-      page_id: form.messenger_page_id,
-      page_token: form.messenger_page_token,
-    })
-    validateResult.value = r.ok
-      ? { ok: true, message: `Đã xác minh Page «${r.page_name || form.messenger_page_id}»` }
-      : { ok: false, message: r.error || 'Không xác minh được.' }
-  } catch (e) {
-    validateResult.value = { ok: false, message: (e as Error).message || 'Không xác minh được.' }
-  } finally {
-    validating.value = false
-  }
-}
-
-// --- auto-subscribe the Page to message events ---
-const subscribing = ref(false)
-const subscribeResult = ref<{ ok: boolean; message: string } | null>(null)
-async function subscribe() {
-  subscribing.value = true
-  subscribeResult.value = null
-  try {
-    const r = await api.subscribeMessenger(props.botId, { page_token: form.messenger_page_token })
-    subscribeResult.value = r.ok
-      ? { ok: true, message: 'Đã đăng ký Page nhận tin nhắn' }
-      : { ok: false, message: r.error || 'Đăng ký thất bại.' }
-  } catch (e) {
-    subscribeResult.value = { ok: false, message: (e as Error).message || 'Đăng ký thất bại.' }
-  } finally {
-    subscribing.value = false
-  }
-}
-
 // --- simulate (dry-run inbound message) ---
 const testText = ref('')
 const testing = ref(false)
@@ -209,52 +170,6 @@ function submit() {
         />
         <span class="field-hint">Dùng để xác minh chữ ký request từ Facebook (an toàn hơn).</span>
       </label>
-
-      <!-- Validate ID + token -->
-      <div v-if="!readonly" class="inline-action">
-        <Button
-          type="button"
-          label="Kiểm tra kết nối"
-          icon="pi pi-shield"
-          outlined
-          size="small"
-          :loading="validating"
-          @click="validate"
-        />
-        <Transition name="fade">
-          <span
-            v-if="validateResult"
-            class="result-chip"
-            :class="validateResult.ok ? 'ok' : 'err'"
-          >
-            <i :class="validateResult.ok ? 'pi pi-check-circle' : 'pi pi-times-circle'" aria-hidden="true" />
-            {{ validateResult.message }}
-          </span>
-        </Transition>
-      </div>
-
-      <!-- Auto-subscribe the Page (skips the manual Meta dashboard step) -->
-      <div v-if="!readonly" class="inline-action">
-        <Button
-          type="button"
-          label="Đăng ký Page nhận tin"
-          icon="pi pi-bolt"
-          outlined
-          size="small"
-          :loading="subscribing"
-          @click="subscribe"
-        />
-        <Transition name="fade">
-          <span
-            v-if="subscribeResult"
-            class="result-chip"
-            :class="subscribeResult.ok ? 'ok' : 'err'"
-          >
-            <i :class="subscribeResult.ok ? 'pi pi-check-circle' : 'pi pi-times-circle'" aria-hidden="true" />
-            {{ subscribeResult.message }}
-          </span>
-        </Transition>
-      </div>
 
       <!-- Callback URL helper -->
       <div class="callback">

@@ -30,11 +30,11 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response
 from app.api.http import get_uid, handle_errors, json_response, read_json
 from app.channels import messenger
 from app.core.errors import not_found
-from app.core.logging import get_logger
+from app.core.logging import get_logger, recent_logs
 from app.db.database import get_session
 from app.db.repository import BotRepository
 from app.ingest import image_vision
-from app.services import bot_service
+from app.services import bot_service, webhook_debug
 
 log = get_logger("webhooks")
 
@@ -151,6 +151,12 @@ async def _verify_handshake(request: Request) -> Response:
     if mode == "subscribe" and token:
         with get_session() as session:
             bot = BotRepository(session).find_enabled_by_verify_token(token)
+            matched_page = bot.messenger_page_id if bot else ""
+        webhook_debug.record({
+            "kind": "verify",
+            "page_id": matched_page,
+            "token_matched": bot is not None,
+        })
         if bot is not None:
             return PlainTextResponse(challenge)
     return PlainTextResponse("Forbidden", status_code=403)
@@ -175,12 +181,23 @@ async def _receive_events(request: Request) -> Response:
         for entry in data.get("entry", []):
             page_id = str(entry.get("id") or "")
             bot = repo.find_by_messenger_page_id(page_id)
+            sig_valid = None
+            if bot is not None and bot.messenger_app_secret:
+                sig_valid = _valid_signature(bot.messenger_app_secret, raw, signature)
+            # Record every entry (matched or not, signature ok or not) for the debug panel.
+            webhook_debug.record({
+                "kind": "event",
+                "page_id": page_id,
+                "matched": bot is not None,
+                "signature_valid": sig_valid,
+                "messaging": len(entry.get("messaging", []) or []),
+                "changes": len(entry.get("changes", []) or []),
+                "payload": entry,
+            })
             if bot is None:
                 log.warning("messenger event for unknown/disabled page %s", page_id)
                 continue
-            if bot.messenger_app_secret and not _valid_signature(
-                bot.messenger_app_secret, raw, signature
-            ):
+            if sig_valid is False:
                 log.warning("messenger signature mismatch for page %s", page_id)
                 continue
             # Messenger DMs.
@@ -316,7 +333,49 @@ async def messenger_subscribe(request: Request) -> JSONResponse:
     return json_response(result)
 
 
+@handle_errors
+async def webhook_debug_view(request: Request) -> JSONResponse:
+    """GET /api/bots/{bot_id}/webhook/debug → subscribe status + recent webhook events."""
+    uid = get_uid(request)
+    bot_id = request.path_params["bot_id"]
+    with get_session() as session:
+        bot = BotRepository(session).get_for_owner(bot_id, uid)
+        if bot is None:
+            raise not_found("Không tìm thấy bot này.")
+        page_id = bot.messenger_page_id
+        page_token = bot.messenger_page_token
+    subscribed = await messenger.subscription_status(page_token) if page_token else {
+        "ok": False, "error": "Chưa cấu hình Page Access Token.", "fields": []
+    }
+    return json_response(
+        {"page_id": page_id, "subscribed": subscribed, "events": webhook_debug.recent(page_id)}
+    )
+
+
+@handle_errors
+async def debug_logs_view(request: Request) -> JSONResponse:
+    """GET /api/debug/logs → recent on-disk app logs (admin only; logs are global)."""
+    if get_uid(request) != "admin":
+        raise not_found("Không tìm thấy.")
+    level = request.query_params.get("level") or None
+    return json_response({"logs": recent_logs(level=level)})
+
+
 def register(app) -> None:
+    app.add_route("/api/webhooks/messenger", messenger_webhook, methods=["GET", "POST"])
+    app.add_route(
+        "/api/bots/{bot_id}/messenger/simulate", messenger_simulate, methods=["POST"]
+    )
+    app.add_route(
+        "/api/bots/{bot_id}/messenger/validate", messenger_validate, methods=["POST"]
+    )
+    app.add_route(
+        "/api/bots/{bot_id}/messenger/subscribe", messenger_subscribe, methods=["POST"]
+    )
+    app.add_route(
+        "/api/bots/{bot_id}/webhook/debug", webhook_debug_view, methods=["GET"]
+    )
+    app.add_route("/api/debug/logs", debug_logs_view, methods=["GET"])
     app.add_route("/api/webhooks/messenger", messenger_webhook, methods=["GET", "POST"])
     app.add_route(
         "/api/bots/{bot_id}/messenger/simulate", messenger_simulate, methods=["POST"]

@@ -82,6 +82,26 @@ async def _post_message(page_token: str, payload: dict, *, what: str) -> bool:
         return False
 
 
+async def subscription_status(page_token: str) -> dict:
+    """Which webhook fields the Page is subscribed to. Returns {ok, fields[], error?}."""
+    if not page_token:
+        return {"ok": False, "error": "Chưa có Page Access Token.", "fields": []}
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.get(
+                f"{_GRAPH_BASE}/me/subscribed_apps", params={"access_token": page_token}
+            )
+        data = resp.json()
+        if resp.status_code >= 400:
+            return {"ok": False, "error": str(data.get("error", {}).get("message", "Lỗi")), "fields": []}
+        fields: list[str] = []
+        for app in data.get("data", []):
+            fields = app.get("subscribed_fields", fields) or fields
+        return {"ok": True, "fields": fields}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"Lỗi kết nối ({type(exc).__name__}).", "fields": []}
+
+
 async def subscribe_page(page_token: str) -> dict:
     """Subscribe the app to the Page's message events (so it receives webhooks).
 

@@ -103,6 +103,30 @@ export interface ConversationTurn {
   created_at: string
 }
 
+// --- webhook debug / logs (admin/owner) ---
+export interface WebhookEvent {
+  time: string
+  kind: string
+  page_id?: string
+  matched?: boolean
+  signature_valid?: boolean | null
+  messaging?: number
+  changes?: number
+  token_matched?: boolean
+  payload?: unknown
+}
+export interface WebhookDebugResult {
+  page_id: string
+  subscribed: { ok: boolean; fields: string[]; error?: string }
+  events: WebhookEvent[]
+}
+export interface LogRecord {
+  time: string
+  level: string
+  logger: string
+  message: string
+}
+
 export interface DocumentItem {
   id: string
   bot_id: string
@@ -238,6 +262,15 @@ export const api = {
   // Send a test message to the bot's Telegram support group.
   testTelegram: (botId: string, body: { telegram_bot_token?: string; telegram_group_id?: string }) =>
     request<{ ok: boolean; error?: string }>('POST', `/api/bots/${botId}/telegram/test`, body),
+
+  // --- webhook debug / logs ---
+  getWebhookDebug: (botId: string) =>
+    request<WebhookDebugResult>('GET', `/api/bots/${botId}/webhook/debug`),
+  getDebugLogs: (level?: string) =>
+    request<{ logs: LogRecord[] }>(
+      'GET',
+      `/api/debug/logs${level ? `?level=${encodeURIComponent(level)}` : ''}`,
+    ).then((r) => r.logs),
 
   // --- usage dashboard ---
   getStatsOverview: (botId: string, range: string) =>

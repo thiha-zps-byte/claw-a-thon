@@ -11,6 +11,8 @@ import ChatPanel from './ChatPanel.vue'
 import DocumentPanel from './DocumentPanel.vue'
 import BotForm from './BotForm.vue'
 import IntegrationForm from './IntegrationForm.vue'
+import WebhookDebug from './WebhookDebug.vue'
+import SystemLogs from './SystemLogs.vue'
 import StatsPanel from './StatsPanel.vue'
 import { useBotsStore } from '@/stores/bots'
 import { useUserStore } from '@/stores/user'
@@ -27,6 +29,8 @@ const confirmDelete = ref(false)
 // A shared "dùng chung" bot is read-only for everyone except its owner (UID "admin").
 const editable = computed(() => props.bot.owner_uid === user.uid)
 const readonly = computed(() => !editable.value)
+// System logs are global → only the admin identity sees the "Nhật ký" tab.
+const isAdmin = computed(() => user.uid === 'admin')
 
 watch(
   () => props.bot.id,
@@ -96,6 +100,7 @@ async function remove() {
         <Tab value="config"><i class="pi pi-cog" aria-hidden="true" /> Cấu hình</Tab>
         <Tab value="connect"><i class="pi pi-facebook" aria-hidden="true" /> Kết nối</Tab>
         <Tab value="stats"><i class="pi pi-chart-bar" aria-hidden="true" /> Thống kê</Tab>
+        <Tab v-if="isAdmin" value="logs"><i class="pi pi-list" aria-hidden="true" /> Nhật ký</Tab>
       </TabList>
     </Tabs>
     <!-- Content driven by a keyed transition so switching tabs fades instead of
@@ -134,9 +139,13 @@ async function remove() {
             :readonly="readonly"
             @submit="save"
           />
+          <WebhookDebug v-if="editable" :bot-id="bot.id" />
         </div>
-        <div v-else key="stats" class="panel-scroll panel-wide">
+        <div v-else-if="activeTab === 'stats'" key="stats" class="panel-scroll panel-wide">
           <StatsPanel :bot-id="bot.id" />
+        </div>
+        <div v-else key="logs" class="panel-scroll panel-wide">
+          <SystemLogs />
         </div>
       </Transition>
     </div>

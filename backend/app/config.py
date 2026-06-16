@@ -86,6 +86,11 @@ class Settings:
     def data_dir(self) -> Path:
         return _REPO_ROOT / "backend" / "data"
 
+    @property
+    def log_dir(self) -> Path:
+        """On-disk dir for app/webhook debug logs (override with LOG_DIR)."""
+        return Path(os.getenv("LOG_DIR") or (self.data_dir / "logs"))
+
     def require_llm(self) -> None:
         """Validate that the LLM is configured (used by boot self-check)."""
         if not self.llm_base_url or not self.llm_api_key:

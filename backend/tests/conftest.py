@@ -19,6 +19,8 @@ os.environ.setdefault("LLM_BASE_URL", "http://test.local/v1")
 os.environ.setdefault("LLM_API_KEY", "test-key")
 os.environ["CONTEXT_TOKEN_BUDGET"] = "2000"
 os.environ["MAX_UPLOAD_MB"] = "1"
+# Keep on-disk debug logs out of the repo during tests.
+os.environ["LOG_DIR"] = tempfile.mkdtemp(prefix="cs-logs-")
 
 from app.config import get_settings  # noqa: E402
 from app.db.database import init_db, reset_engine  # noqa: E402
