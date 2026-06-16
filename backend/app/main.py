@@ -23,6 +23,7 @@ from starlette.staticfiles import StaticFiles
 from app.api import admin as admin_api
 from app.api import bots as bots_api
 from app.api import stats as stats_api
+from app.api import telegram as telegram_api
 from app.api import webhooks as webhooks_api
 from app.config import get_settings
 from app.core.errors import AppError, internal_error
@@ -60,6 +61,7 @@ bots_api.register(app)
 webhooks_api.register(app)
 stats_api.register(app)
 admin_api.register(app)
+telegram_api.register(app)
 
 
 # --- frontend (SPA) -----------------------------------------------------------

@@ -14,7 +14,7 @@ import hashlib
 from dataclasses import dataclass
 
 from app.agents import base
-from app.agents.behavior import guards, triage
+from app.agents.behavior import escalation, guards, triage
 from app.config import get_settings
 from app.core.logging import get_logger, kv
 from app.db.models import Bot, Document
@@ -32,6 +32,7 @@ class TurnResult:
     delay: float
     truncated_docs: bool = False
     degraded: bool = False   # True when the bot fell back instead of answering
+    needs_human: bool = False  # message matches the operator's hand-off topics
 
 
 class AgentService:
@@ -99,6 +100,14 @@ class AgentService:
         category = await asyncio.to_thread(triage.classify, message)
         log.info(kv(event="turn", bot=bot.id, uid=uid, category=category))
 
+        # Does this need a real human? Only the cost of one extra fast-model call,
+        # and only for bots that have escalation forwarding turned on.
+        needs_human = False
+        if bot.telegram_forward_enabled and bot.escalation_topics:
+            needs_human = await asyncio.to_thread(
+                escalation.classify, message, bot.escalation_topics
+            )
+
         # If the player asks to be addressed differently, remember it for the rest
         # of this conversation (regardless of how this turn is routed) so we stop
         # re-imposing the default xưng hô later.
@@ -120,7 +129,7 @@ class AgentService:
                 category, bot, seed, self._recent_canned.get(recent_key)
             )
             self._recent_canned[recent_key] = idx
-            return TurnResult(reply, category, guards.human_delay(reply))
+            return TurnResult(reply, category, guards.human_delay(reply), needs_human=needs_human)
 
         # Substantive path — main ADK agent grounded in documents.
         reply, degraded = await self._run_agent(bot, documents, message, uid, session_id)
@@ -129,7 +138,9 @@ class AgentService:
         # Skip when the player opted out of the default xưng hô.
         if addr_key not in self._address_freed:
             reply = await asyncio.to_thread(guards.enforce_address, reply, bot)
-        return TurnResult(reply, category, guards.human_delay(reply), degraded=degraded)
+        return TurnResult(
+            reply, category, guards.human_delay(reply), degraded=degraded, needs_human=needs_human
+        )
 
     async def _run_agent(
         self, bot: Bot, documents: list[Document], message: str, uid: str, session_id: str

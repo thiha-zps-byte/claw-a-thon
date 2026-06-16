@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { reactive, ref, watch, computed } from 'vue'
 import InputText from 'primevue/inputtext'
+import Textarea from 'primevue/textarea'
 import ToggleSwitch from 'primevue/toggleswitch'
+import SelectButton from 'primevue/selectbutton'
 import Button from 'primevue/button'
 import { api, type Bot } from '@/api/client'
 
@@ -23,9 +25,23 @@ const form = reactive({
   messenger_verify_token: '',
   messenger_page_token: '',
   messenger_app_secret: '',
+  // Telegram escalation
+  telegram_forward_enabled: false,
+  forward_channel: 'telegram',
+  telegram_group_id: '',
+  escalation_topics: 'nạp tiền, hack cheat, lỗi game',
+  telegram_bot_token: '',
 })
 const pageTokenSet = ref(false)
 const appSecretSet = ref(false)
+const tgTokenSet = ref(false)
+
+// Forward channel options — only Telegram is live; others are placeholders.
+const channelOptions = [
+  { label: 'Telegram', value: 'telegram', disabled: false },
+  { label: 'MS Teams — Sắp có', value: 'msteams', disabled: true },
+  { label: 'Kênh khác — Sắp có', value: 'other', disabled: true },
+]
 
 watch(
   () => props.initial,
@@ -38,6 +54,12 @@ watch(
     form.messenger_app_secret = ''
     pageTokenSet.value = !!v.messenger_page_token_set
     appSecretSet.value = !!v.messenger_app_secret_set
+    form.telegram_forward_enabled = !!v.telegram_forward_enabled
+    form.forward_channel = v.forward_channel || 'telegram'
+    form.telegram_group_id = v.telegram_group_id ?? ''
+    form.escalation_topics = v.escalation_topics ?? 'nạp tiền, hack cheat, lỗi game'
+    form.telegram_bot_token = ''
+    tgTokenSet.value = !!v.telegram_bot_token_set
   },
   { immediate: true },
 )
@@ -113,6 +135,27 @@ async function runTest() {
   }
 }
 
+// --- telegram: test send to the support group ---
+const tgTesting = ref(false)
+const tgResult = ref<{ ok: boolean; message: string } | null>(null)
+async function testTelegram() {
+  tgTesting.value = true
+  tgResult.value = null
+  try {
+    const r = await api.testTelegram(props.botId, {
+      telegram_bot_token: form.telegram_bot_token,
+      telegram_group_id: form.telegram_group_id,
+    })
+    tgResult.value = r.ok
+      ? { ok: true, message: 'Đã gửi tin thử vào nhóm' }
+      : { ok: false, message: r.error || 'Gửi thất bại.' }
+  } catch (e) {
+    tgResult.value = { ok: false, message: (e as Error).message || 'Gửi thất bại.' }
+  } finally {
+    tgTesting.value = false
+  }
+}
+
 function submit() {
   emit('submit', { ...form })
 }
@@ -120,142 +163,229 @@ function submit() {
 
 <template>
   <form class="integration-form" @submit.prevent="submit">
+    <span class="field-label section-title">Facebook Messenger</span>
     <label class="switch-row">
       <ToggleSwitch v-model="form.messenger_enabled" :disabled="readonly" />
       <span class="field-label">Bật kết nối Facebook Messenger</span>
     </label>
 
-    <label class="field">
-      <span class="field-label">Page ID</span>
-      <InputText v-model="form.messenger_page_id" :disabled="readonly" placeholder="VD: 102345678901234" aria-label="Page ID" />
-      <span class="field-hint">ID của Facebook Page (Trang) sẽ kết nối với bot này.</span>
-    </label>
+    <template v-if="form.messenger_enabled">
+      <label class="field">
+        <span class="field-label">Page ID</span>
+        <InputText v-model="form.messenger_page_id" :disabled="readonly" placeholder="VD: 102345678901234" aria-label="Page ID" />
+        <span class="field-hint">ID của Facebook Page (Trang) sẽ kết nối với bot này.</span>
+      </label>
 
-    <label class="field">
-      <span class="field-label">Verify Token</span>
-      <InputText
-        v-model="form.messenger_verify_token"
-        :disabled="readonly"
-        placeholder="Chuỗi bạn tự đặt, dùng khi cấu hình webhook"
-        aria-label="Verify Token"
-      />
-      <span class="field-hint">Tự đặt — dán đúng chuỗi này vào Meta App khi thêm webhook.</span>
-    </label>
-
-    <label class="field">
-      <span class="field-label">Page Access Token</span>
-      <InputText
-        v-model="form.messenger_page_token"
-        :disabled="readonly"
-        type="password"
-        :placeholder="pageTokenSet ? '•••••••• (đã lưu — để trống nếu giữ nguyên)' : 'EAAB...'"
-        aria-label="Page Access Token"
-      />
-    </label>
-
-    <label class="field">
-      <span class="field-label">App Secret</span>
-      <InputText
-        v-model="form.messenger_app_secret"
-        :disabled="readonly"
-        type="password"
-        :placeholder="appSecretSet ? '•••••••• (đã lưu — để trống nếu giữ nguyên)' : 'App Secret của Meta App'"
-        aria-label="App Secret"
-      />
-      <span class="field-hint">Dùng để xác minh chữ ký request từ Facebook (an toàn hơn).</span>
-    </label>
-
-    <!-- Validate ID + token -->
-    <div v-if="!readonly" class="inline-action">
-      <Button
-        type="button"
-        label="Kiểm tra kết nối"
-        icon="pi pi-shield"
-        outlined
-        size="small"
-        :loading="validating"
-        @click="validate"
-      />
-      <Transition name="fade">
-        <span
-          v-if="validateResult"
-          class="result-chip"
-          :class="validateResult.ok ? 'ok' : 'err'"
-        >
-          <i :class="validateResult.ok ? 'pi pi-check-circle' : 'pi pi-times-circle'" aria-hidden="true" />
-          {{ validateResult.message }}
-        </span>
-      </Transition>
-    </div>
-
-    <!-- Auto-subscribe the Page (skips the manual Meta dashboard step) -->
-    <div v-if="!readonly" class="inline-action">
-      <Button
-        type="button"
-        label="Đăng ký Page nhận tin"
-        icon="pi pi-bolt"
-        outlined
-        size="small"
-        :loading="subscribing"
-        @click="subscribe"
-      />
-      <Transition name="fade">
-        <span
-          v-if="subscribeResult"
-          class="result-chip"
-          :class="subscribeResult.ok ? 'ok' : 'err'"
-        >
-          <i :class="subscribeResult.ok ? 'pi pi-check-circle' : 'pi pi-times-circle'" aria-hidden="true" />
-          {{ subscribeResult.message }}
-        </span>
-      </Transition>
-    </div>
-
-    <!-- Callback URL helper -->
-    <div class="callback">
-      <span class="field-label">Callback URL (dán vào Meta App → Webhooks)</span>
-      <div class="callback-row">
-        <code class="callback-url">{{ callbackUrl }}</code>
-        <Button
-          type="button"
-          :icon="copied ? 'pi pi-check' : 'pi pi-copy'"
-          :label="copied ? 'Đã chép' : 'Chép'"
-          text
-          size="small"
-          @click="copyCallback"
-        />
-      </div>
-    </div>
-
-    <!-- Self-test before connecting a real Page -->
-    <div v-if="!readonly" class="test-box">
-      <span class="field-label">Gửi thử (giả lập Messenger)</span>
-      <span class="field-hint">
-        Kiểm tra bot trả lời thế nào mà chưa cần Page thật — chạy đúng luồng như tin nhắn Messenger.
-      </span>
-      <div class="test-row">
+      <label class="field">
+        <span class="field-label">Verify Token</span>
         <InputText
-          v-model="testText"
-          placeholder="VD: cho mình hỏi cách nạp thẻ"
-          aria-label="Tin nhắn thử"
-          @keydown.enter.prevent="runTest"
+          v-model="form.messenger_verify_token"
+          :disabled="readonly"
+          placeholder="Chuỗi bạn tự đặt, dùng khi cấu hình webhook"
+          aria-label="Verify Token"
         />
+        <span class="field-hint">Tự đặt — dán đúng chuỗi này vào Meta App khi thêm webhook.</span>
+      </label>
+
+      <label class="field">
+        <span class="field-label">Page Access Token</span>
+        <InputText
+          v-model="form.messenger_page_token"
+          :disabled="readonly"
+          type="password"
+          :placeholder="pageTokenSet ? '•••••••• (đã lưu — để trống nếu giữ nguyên)' : 'EAAB...'"
+          aria-label="Page Access Token"
+        />
+      </label>
+
+      <label class="field">
+        <span class="field-label">App Secret</span>
+        <InputText
+          v-model="form.messenger_app_secret"
+          :disabled="readonly"
+          type="password"
+          :placeholder="appSecretSet ? '•••••••• (đã lưu — để trống nếu giữ nguyên)' : 'App Secret của Meta App'"
+          aria-label="App Secret"
+        />
+        <span class="field-hint">Dùng để xác minh chữ ký request từ Facebook (an toàn hơn).</span>
+      </label>
+
+      <!-- Validate ID + token -->
+      <div v-if="!readonly" class="inline-action">
         <Button
           type="button"
-          label="Gửi thử"
-          icon="pi pi-send"
+          label="Kiểm tra kết nối"
+          icon="pi pi-shield"
+          outlined
           size="small"
-          :loading="testing"
-          :disabled="!testText.trim()"
-          @click="runTest"
+          :loading="validating"
+          @click="validate"
         />
+        <Transition name="fade">
+          <span
+            v-if="validateResult"
+            class="result-chip"
+            :class="validateResult.ok ? 'ok' : 'err'"
+          >
+            <i :class="validateResult.ok ? 'pi pi-check-circle' : 'pi pi-times-circle'" aria-hidden="true" />
+            {{ validateResult.message }}
+          </span>
+        </Transition>
       </div>
-      <Transition name="fade">
-        <div v-if="testReply !== null" class="test-reply">
-          <span class="muted">Bot trả lời:</span>
-          <p>{{ testReply }}</p>
+
+      <!-- Auto-subscribe the Page (skips the manual Meta dashboard step) -->
+      <div v-if="!readonly" class="inline-action">
+        <Button
+          type="button"
+          label="Đăng ký Page nhận tin"
+          icon="pi pi-bolt"
+          outlined
+          size="small"
+          :loading="subscribing"
+          @click="subscribe"
+        />
+        <Transition name="fade">
+          <span
+            v-if="subscribeResult"
+            class="result-chip"
+            :class="subscribeResult.ok ? 'ok' : 'err'"
+          >
+            <i :class="subscribeResult.ok ? 'pi pi-check-circle' : 'pi pi-times-circle'" aria-hidden="true" />
+            {{ subscribeResult.message }}
+          </span>
+        </Transition>
+      </div>
+
+      <!-- Callback URL helper -->
+      <div class="callback">
+        <span class="field-label">Callback URL (dán vào Meta App → Webhooks)</span>
+        <div class="callback-row">
+          <code class="callback-url">{{ callbackUrl }}</code>
+          <Button
+            type="button"
+            :icon="copied ? 'pi pi-check' : 'pi pi-copy'"
+            :label="copied ? 'Đã chép' : 'Chép'"
+            text
+            size="small"
+            @click="copyCallback"
+          />
         </div>
-      </Transition>
+      </div>
+
+      <!-- Self-test before connecting a real Page -->
+      <div v-if="!readonly" class="test-box">
+        <span class="field-label">Gửi thử (giả lập Messenger)</span>
+        <span class="field-hint">
+          Kiểm tra bot trả lời thế nào mà chưa cần Page thật — chạy đúng luồng như tin nhắn Messenger.
+        </span>
+        <div class="test-row">
+          <InputText
+            v-model="testText"
+            placeholder="VD: cho mình hỏi cách nạp thẻ"
+            aria-label="Tin nhắn thử"
+            @keydown.enter.prevent="runTest"
+          />
+          <Button
+            type="button"
+            label="Gửi thử"
+            icon="pi pi-send"
+            size="small"
+            :loading="testing"
+            :disabled="!testText.trim()"
+            @click="runTest"
+          />
+        </div>
+        <Transition name="fade">
+          <div v-if="testReply !== null" class="test-reply">
+            <span class="muted">Bot trả lời:</span>
+            <p>{{ testReply }}</p>
+          </div>
+        </Transition>
+      </div>
+    </template>
+
+    <!-- Escalation: forward hard cases to a human support group (one-way) -->
+    <div class="tg-section">
+      <span class="field-label section-title">Chuyển cho người thật</span>
+      <span class="field-hint">
+        Khi bot bí hoặc gặp tình huống bạn khai bên dưới, hệ thống gửi tóm tắt <strong>1 chiều</strong>
+        về nhóm để người thật nhảy lên fanpage hỗ trợ.
+      </span>
+
+      <label class="field">
+        <span class="field-label">Kênh nhận</span>
+        <SelectButton
+          v-model="form.forward_channel"
+          :options="channelOptions"
+          option-label="label"
+          option-value="value"
+          option-disabled="disabled"
+          :allow-empty="false"
+          :disabled="readonly"
+          aria-label="Kênh nhận"
+        />
+      </label>
+
+      <label class="switch-row">
+        <ToggleSwitch v-model="form.telegram_forward_enabled" :disabled="readonly" />
+        <span class="field-label">Bật chuyển cho người thật</span>
+      </label>
+
+      <template v-if="form.telegram_forward_enabled">
+        <label class="field">
+          <span class="field-label">Khi nào cần người thật xử lý?</span>
+          <Textarea
+            v-model="form.escalation_topics"
+            :disabled="readonly"
+            rows="2"
+            auto-resize
+            placeholder="Liệt kê tình huống nên chuyển nhân viên thật, cách nhau bằng dấu phẩy. VD: nạp tiền, hack cheat, lỗi game"
+            aria-label="Tình huống cần người thật"
+          />
+          <span class="field-hint">Bot tự nhận diện câu hỏi thuộc các tình huống này để chuyển nhóm.</span>
+        </label>
+
+        <label class="field">
+          <span class="field-label">Telegram Bot Token</span>
+          <InputText
+            v-model="form.telegram_bot_token"
+            :disabled="readonly"
+            type="password"
+            :placeholder="tgTokenSet ? '•••••••• (đã lưu — để trống nếu giữ nguyên)' : '123456:ABC...'"
+            aria-label="Telegram Bot Token"
+          />
+          <span class="field-hint">Tạo bot qua @BotFather để lấy token.</span>
+        </label>
+
+        <label class="field">
+          <span class="field-label">Group ID</span>
+          <InputText
+            v-model="form.telegram_group_id"
+            :disabled="readonly"
+            placeholder="VD: -5528704291"
+            aria-label="Telegram Group ID"
+          />
+          <span class="field-hint">Thêm bot vào nhóm rồi lấy chat id (vd qua @getidsbot).</span>
+        </label>
+
+        <div v-if="!readonly" class="inline-action">
+          <Button
+            type="button"
+            label="Gửi thử về nhóm"
+            icon="pi pi-send"
+            outlined
+            size="small"
+            :loading="tgTesting"
+            @click="testTelegram"
+          />
+          <Transition name="fade">
+            <span v-if="tgResult" class="result-chip" :class="tgResult.ok ? 'ok' : 'err'">
+              <i :class="tgResult.ok ? 'pi pi-check-circle' : 'pi pi-times-circle'" aria-hidden="true" />
+              {{ tgResult.message }}
+            </span>
+          </Transition>
+        </div>
+      </template>
     </div>
 
     <div v-if="!readonly" class="actions">
@@ -269,6 +399,19 @@ function submit() {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+.tg-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  margin-top: 2px;
+}
+.section-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
 }
 .field {
   display: flex;

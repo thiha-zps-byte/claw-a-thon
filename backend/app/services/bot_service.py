@@ -50,6 +50,12 @@ def bot_to_dict(bot: Bot, doc_count: int | None = None) -> dict:
         "messenger_verify_token": bot.messenger_verify_token,
         "messenger_page_token_set": bool(bot.messenger_page_token),
         "messenger_app_secret_set": bool(bot.messenger_app_secret),
+        # Telegram escalation: token write-only (boolean flag only); rest as-is.
+        "telegram_forward_enabled": bot.telegram_forward_enabled,
+        "forward_channel": bot.forward_channel,
+        "telegram_group_id": bot.telegram_group_id,
+        "escalation_topics": bot.escalation_topics,
+        "telegram_bot_token_set": bool(bot.telegram_bot_token),
         "created_at": bot.created_at.isoformat() if bot.created_at else None,
     }
     if doc_count is not None:
@@ -105,6 +111,21 @@ def _apply_messenger_fields(bot: Bot, data: dict) -> None:
             setattr(bot, field, value)
 
 
+def _apply_telegram_fields(bot: Bot, data: dict) -> None:
+    """Copy Telegram escalation fields from ``data`` onto ``bot``.
+
+    ``telegram_bot_token`` is write-only (blank/absent keeps the stored token).
+    """
+    if "telegram_forward_enabled" in data and data["telegram_forward_enabled"] is not None:
+        bot.telegram_forward_enabled = bool(data["telegram_forward_enabled"])
+    for field in ("forward_channel", "telegram_group_id", "escalation_topics"):
+        if field in data and data[field] is not None:
+            setattr(bot, field, str(data[field]).strip())
+    token = (data.get("telegram_bot_token") or "").strip()
+    if token:
+        bot.telegram_bot_token = token
+
+
 # --- CRUD ---------------------------------------------------------------------
 
 
@@ -129,6 +150,7 @@ def create_bot(owner_uid: str, data: dict) -> dict:
     # Usually configured later (wizard step 3 / Kết nối tab via PATCH), but accept it
     # here too so a single create call can fully provision a bot.
     _apply_messenger_fields(bot, data)
+    _apply_telegram_fields(bot, data)
     with get_session() as session:
         repo = BotRepository(session)
         repo.create(bot)
@@ -167,6 +189,13 @@ def seed_shared_bot() -> None:
                 self_term="mình",
                 tone="thân thiện, chuyên nghiệp",
             )
+            # Pre-wire the demo Telegram escalation if creds are configured (.env).
+            settings = get_settings(require_secrets=False)
+            if settings.demo_telegram_token:
+                bot.telegram_forward_enabled = True
+                bot.forward_channel = "telegram"
+                bot.telegram_bot_token = settings.demo_telegram_token
+                bot.telegram_group_id = settings.demo_telegram_group_id
             repo.create(bot)
             bot_id = bot.id
         sample_ids = [s["id"] for s in sample_docs.list_samples()]
@@ -223,6 +252,7 @@ def update_bot(owner_uid: str, bot_id: str, data: dict) -> dict:
         if "enabled_mcp" in data:
             bot.enabled_mcp = json.dumps(data["enabled_mcp"] or [])
         _apply_messenger_fields(bot, data)
+        _apply_telegram_fields(bot, data)
         repo.update(bot)
         agent_service.invalidate(bot_id)
         return bot_to_dict(bot, doc_count=len(repo.documents_of(bot_id)))
@@ -414,8 +444,11 @@ async def chat(
     result = await agent_service.run_turn(bot, documents, message, uid, session_id)
     latency_ms = int((time.perf_counter() - started) * 1000)
 
+    # Hard case → forward a one-way summary to the human support group (best-effort).
+    escalated = await _maybe_forward(bot, channel, uid, message, result)
+
     if log_event:
-        _record_event(bot_id, channel, uid, session_id, message, result, latency_ms)
+        _record_event(bot_id, channel, uid, session_id, message, result, latency_ms, escalated)
 
     return {
         "reply": result.reply,
@@ -425,7 +458,59 @@ async def chat(
     }
 
 
-def _record_event(bot_id, channel, sender_id, session_id, question, result, latency_ms) -> None:
+_CHANNEL_LABELS = {"web": "Web", "messenger": "Messenger"}
+
+
+def _ticket_text(bot: Bot, channel: str, sender_id: str, summary: str) -> str:
+    """Build the support ticket as a Telegram code block (<pre> → monospace box).
+
+    Dynamic parts are HTML-escaped (still required inside <pre>).
+    """
+    import html
+    from datetime import UTC, datetime
+
+    now = datetime.now(UTC).strftime("%H:%M - %d/%m/%Y")
+    src = _CHANNEL_LABELS.get(channel, channel)
+    e = html.escape
+    body = (
+        f"📌 [TICKET] — {e(bot.name)}\n"
+        f"• Nguồn: {e(src)}\n"
+        f"• Người chơi: {e(sender_id)}\n"
+        f"• Thời gian: {now}\n"
+        f"• Nội dung: {e(summary)}"
+    )
+    return f"<pre>{body}</pre>"
+
+
+async def _maybe_forward(bot: Bot, channel: str, sender_id: str, question: str, result) -> bool:
+    """Forward a support ticket to the Telegram group on a hard case. Never raises."""
+    should = result.degraded or result.needs_human
+    if not (
+        should
+        and bot.telegram_forward_enabled
+        and bot.telegram_bot_token
+        and bot.telegram_group_id
+    ):
+        return False
+    import asyncio
+
+    from app.agents.behavior import escalation
+    from app.channels import telegram
+
+    try:
+        summary = await asyncio.to_thread(escalation.summarize, question)
+        text = _ticket_text(bot, channel, sender_id, summary or question)
+        return await telegram.send_message(
+            bot.telegram_bot_token, bot.telegram_group_id, text, parse_mode="HTML"
+        )
+    except Exception:  # noqa: BLE001 — forwarding must never break a reply
+        _log.warning("telegram forward failed for bot %s", bot.id, exc_info=True)
+        return False
+
+
+def _record_event(
+    bot_id, channel, sender_id, session_id, question, result, latency_ms, escalated=False
+) -> None:
     """Persist one usage event. Never let analytics break a chat reply."""
     from app.db.models import MessageEvent
     from app.db.repository import MessageEventRepository
@@ -443,6 +528,7 @@ def _record_event(bot_id, channel, sender_id, session_id, question, result, late
                     category=result.category,
                     latency_ms=latency_ms,
                     degraded=result.degraded,
+                    escalated=escalated,
                 )
             )
     except Exception:  # noqa: BLE001

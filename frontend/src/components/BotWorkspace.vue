@@ -135,7 +135,7 @@ async function remove() {
             @submit="save"
           />
         </div>
-        <div v-else key="stats" class="panel-scroll">
+        <div v-else key="stats" class="panel-scroll panel-wide">
           <StatsPanel :bot-id="bot.id" />
         </div>
       </Transition>
@@ -229,6 +229,10 @@ async function remove() {
   overflow-y: auto;
   padding: 20px 22px;
   max-width: 760px;
+}
+/* The dashboard is data-heavy — give it more room so KPIs/charts breathe. */
+.panel-wide {
+  max-width: 1100px;
 }
 .danger-zone {
   margin-top: 26px;

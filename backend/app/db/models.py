@@ -49,6 +49,13 @@ class Bot(SQLModel, table=True):
     messenger_verify_token: str = ""  # operator-chosen; matched on the GET handshake
     messenger_page_token: str = ""    # secret — Graph API send
     messenger_app_secret: str = ""    # secret — verifies X-Hub-Signature-256
+    # Escalation: forward "hard cases" to a Telegram support group (one-way).
+    telegram_forward_enabled: bool = False
+    forward_channel: str = "telegram"   # which channel receives forwards (telegram only for now)
+    telegram_bot_token: str = ""        # secret — Telegram Bot API
+    telegram_group_id: str = ""         # target chat id (e.g. -100123…)
+    # When to hand off to a human (free text; the fast model matches against it).
+    escalation_topics: str = "nạp tiền, hack cheat, lỗi game"
     created_at: datetime = Field(default_factory=_now)
 
     def skills(self) -> list[str]:
@@ -86,6 +93,7 @@ class MessageEvent(SQLModel, table=True):
     category: str = ""
     latency_ms: int = 0
     degraded: bool = False            # bot fell back / couldn't answer
+    escalated: bool = False           # forwarded to the human support group
 
 
 class Document(SQLModel, table=True):

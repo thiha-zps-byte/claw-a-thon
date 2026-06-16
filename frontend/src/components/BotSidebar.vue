@@ -205,7 +205,8 @@ function finish() {
 }
 .bot-item.active {
   background: var(--green-soft);
-  border-color: #b9ddc8;
+  border-color: var(--green);
+  box-shadow: inset 3px 0 0 var(--green);
 }
 .avatar {
   width: 38px;

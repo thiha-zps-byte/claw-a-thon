@@ -74,6 +74,7 @@ def overview(uid: str, bot_id: str, range_: str = "7d") -> dict:
     messages = len(events)
     players_in_range = {(e.channel, e.sender_id) for e in events}
     degraded = [e for e in events if e.degraded]
+    escalated_count = sum(1 for e in events if getattr(e, "escalated", False))
     latencies = [e.latency_ms for e in events]
 
     # New vs returning: a player is "new" if their first-ever turn for this bot falls
@@ -117,6 +118,7 @@ def overview(uid: str, bot_id: str, range_: str = "7d") -> dict:
             "returning_players": len(players_in_range) - new_players,
             "messages": messages,
             "degraded_count": len(degraded),
+            "escalated_count": escalated_count,
             "auto_answer_rate": auto_rate,
             "latency_p50_ms": _percentile(latencies, 50),
             "latency_p95_ms": _percentile(latencies, 95),

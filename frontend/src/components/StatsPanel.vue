@@ -142,7 +142,9 @@ async function openPlayer(p: PlayerRow) {
         <StatCard label="Tin nhắn" :value="overview.totals.messages" :hint="channelLine" />
         <StatCard label="Bot tự trả lời" :value="overview.totals.auto_answer_rate + '%'"
                   :hint="`${overview.totals.degraded_count} câu bot bí`" />
-        <StatCard label="Phản hồi p50 / p95"
+        <StatCard label="Đã chuyển nhóm" :value="overview.totals.escalated_count"
+                  hint="ca chuyển người thật" />
+        <StatCard label="Tốc độ phản hồi"
                   :value="fmtMs(overview.totals.latency_p50_ms)"
                   :hint="`p95 ${fmtMs(overview.totals.latency_p95_ms)}`" />
       </section>
@@ -236,8 +238,8 @@ async function openPlayer(p: PlayerRow) {
   padding: 32px 4px;
 }
 .kpi-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
   gap: 10px;
 }
 .charts {

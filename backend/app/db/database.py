@@ -81,17 +81,35 @@ _BOT_ADDED_COLUMNS: dict[str, str] = {
     "messenger_verify_token": "VARCHAR NOT NULL DEFAULT ''",
     "messenger_page_token": "VARCHAR NOT NULL DEFAULT ''",
     "messenger_app_secret": "VARCHAR NOT NULL DEFAULT ''",
+    "telegram_forward_enabled": "BOOLEAN NOT NULL DEFAULT 0",
+    "forward_channel": "VARCHAR NOT NULL DEFAULT 'telegram'",
+    "telegram_bot_token": "VARCHAR NOT NULL DEFAULT ''",
+    "telegram_group_id": "VARCHAR NOT NULL DEFAULT ''",
+    "escalation_topics": "VARCHAR NOT NULL DEFAULT ''",
+}
+
+# Columns added to ``message_events`` after its first release (same rationale).
+_MESSAGE_EVENT_ADDED_COLUMNS: dict[str, str] = {
+    "escalated": "BOOLEAN NOT NULL DEFAULT 0",
 }
 
 
-def _migrate_bot_columns(engine: Engine) -> None:
+def _migrate_added_columns(engine: Engine, table: str, columns: dict[str, str]) -> None:
+    """Add any missing columns to ``table`` (SQLite only, idempotent)."""
     if not engine.url.get_backend_name().startswith("sqlite"):
         return
     with engine.begin() as conn:
-        existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(bots)")}
-        for name, ddl in _BOT_ADDED_COLUMNS.items():
+        existing = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")}
+        if not existing:
+            return  # table doesn't exist yet (create_all handles fresh tables)
+        for name, ddl in columns.items():
             if name not in existing:
-                conn.exec_driver_sql(f"ALTER TABLE bots ADD COLUMN {name} {ddl}")
+                conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+
+
+def _migrate_bot_columns(engine: Engine) -> None:
+    _migrate_added_columns(engine, "bots", _BOT_ADDED_COLUMNS)
+    _migrate_added_columns(engine, "message_events", _MESSAGE_EVENT_ADDED_COLUMNS)
 
 
 @contextmanager

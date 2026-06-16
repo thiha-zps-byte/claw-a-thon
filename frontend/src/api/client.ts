@@ -42,6 +42,13 @@ export interface Bot {
   // Write-only (sent on save, never returned): leave blank to keep the stored secret.
   messenger_page_token?: string
   messenger_app_secret?: string
+  // --- Telegram escalation (forward hard cases to a support group) ---
+  telegram_forward_enabled?: boolean
+  forward_channel?: string
+  telegram_group_id?: string
+  escalation_topics?: string
+  telegram_bot_token_set?: boolean
+  telegram_bot_token?: string // write-only
   created_at: string | null
   document_count?: number
   documents?: DocumentItem[]
@@ -69,6 +76,7 @@ export interface StatsOverview {
     returning_players: number
     messages: number
     degraded_count: number
+    escalated_count: number
     auto_answer_rate: number
     latency_p50_ms: number
     latency_p95_ms: number
@@ -230,6 +238,10 @@ export const api = {
   // Verify the optional admin token to unlock "admin" mode (edits the shared bot).
   adminLogin: (token: string) =>
     request<{ ok: boolean; reason?: string }>('POST', '/api/admin/login', { token }),
+
+  // Send a test message to the bot's Telegram support group.
+  testTelegram: (botId: string, body: { telegram_bot_token?: string; telegram_group_id?: string }) =>
+    request<{ ok: boolean; error?: string }>('POST', `/api/bots/${botId}/telegram/test`, body),
 
   // --- usage dashboard ---
   getStatsOverview: (botId: string, range: string) =>
