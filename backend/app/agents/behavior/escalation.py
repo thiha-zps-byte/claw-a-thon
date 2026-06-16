@@ -40,7 +40,9 @@ def classify(message: str, topics: str) -> bool:
             temperature=0.0,
             retries=1,
         )
-        return bool(re.search(r"\byes\b", raw or "", re.IGNORECASE))
+        low = (raw or "").strip().lower()
+        # Affirmative in EN or VI; a one-word "no"/"không" answer stays False.
+        return low.startswith(("yes", "có", "cần")) or bool(re.search(r"\byes\b", low))
     except Exception as exc:  # noqa: BLE001
         log.warning(f"escalation classify fallback: {type(exc).__name__}")
         return False

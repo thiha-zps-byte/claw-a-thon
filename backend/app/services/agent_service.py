@@ -100,13 +100,17 @@ class AgentService:
         category = await asyncio.to_thread(triage.classify, message)
         log.info(kv(event="turn", bot=bot.id, uid=uid, category=category))
 
-        # Does this need a real human? Only the cost of one extra fast-model call,
-        # and only for bots that have escalation forwarding turned on.
+        # Does this need a real human? high_stakes (regex-detected: trừ tiền, bị hack,
+        # khóa tài khoản…) always qualifies; otherwise ask the fast model against the
+        # operator's topics. Only computed for bots with forwarding turned on.
         needs_human = False
-        if bot.telegram_forward_enabled and bot.escalation_topics:
-            needs_human = await asyncio.to_thread(
-                escalation.classify, message, bot.escalation_topics
-            )
+        if bot.telegram_forward_enabled:
+            if category == triage.HIGH_STAKES:
+                needs_human = True
+            elif bot.escalation_topics:
+                needs_human = await asyncio.to_thread(
+                    escalation.classify, message, bot.escalation_topics
+                )
 
         # If the player asks to be addressed differently, remember it for the rest
         # of this conversation (regardless of how this turn is routed) so we stop
