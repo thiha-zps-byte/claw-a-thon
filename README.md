@@ -29,7 +29,7 @@ Backend chạy trên **GreenNode AgentBase** (Google ADK + LiteLlm → LLM OpenA
 
 - **Tạo bot từ mô tả + tài liệu** — mỗi bot có persona, xưng hô (`player_term`/`self_term`), tài liệu và kỹ năng riêng. Nạp **.md .txt .pdf .docx .csv** và **ảnh** (đọc bằng vision LLM) → đưa vào context của bot.
 - **Triage router thông minh** — chào hỏi đáp nhanh & rẻ; câu liên quan trả lời bám tài liệu; ngoài phạm vi từ chối lịch sự; phàn nàn xoa dịu; việc nhạy cảm (mất tiền, hack, khóa tài khoản) trấn an + chuyển hỗ trợ.
-- **Giọng CS thật** — không lộ là bot, timing như người (typing indicator, độ trễ tự nhiên), không bao giờ hỏi mật khẩu/OTP, kháng prompt-injection.
+- **Giọng CS tự nhiên** — văn phong ấm áp, timing như người (typing indicator, độ trễ tự nhiên), không bao giờ hỏi mật khẩu/OTP, kháng prompt-injection.
 - **Kênh Facebook Messenger** — tự trả lời **tin nhắn fanpage** và tự **DM người bình luận** vào bài post (private replies). Ảnh trong tin/bình luận được đọc bằng vision.
 - **Escalation sang Telegram** — khi câu hỏi khớp chủ đề cần người thật (mặc định: *nạp tiền, hack cheat, lỗi game*) hoặc ca high-stakes, bot gửi **ticket một chiều** đã tóm tắt về nhóm Telegram hỗ trợ.
 - **Dashboard thống kê** — số người chơi, tin/ngày, tỷ lệ tự trả lời, độ trễ, nhóm câu hỏi, phân bổ kênh, "câu bot chưa trả lời được", và xem lại hội thoại từng người chơi (biểu đồ dùng chart.js).
