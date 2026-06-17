@@ -36,6 +36,9 @@ coverage/
 playwright-report/
 test-results/
 
+# --- Private submission notes (not for public repo) ---
+SUBMISSION.md
+
 # --- OS / editor ---
 .DS_Store
 .idea/
